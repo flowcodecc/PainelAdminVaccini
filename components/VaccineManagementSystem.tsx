@@ -12,7 +12,6 @@ import { VaccinesTab } from './tabs/VaccinesTab'
 import { HealthPlansTab } from './tabs/HealthPlansTab'
 import { AppointmentsTab } from './tabs/AppointmentsTab'
 import { NursesTab } from './tabs/NursesTab'
-import { GerentesTab } from './tabs/GerentesTab'
 import { PatientTab } from './tabs/PatientTab'
 import { User } from '../types'
 import { Menu, Home, Syringe, HeartPulse, Calendar, Users, UserCircle, Briefcase } from 'lucide-react'
@@ -132,9 +131,7 @@ export function VaccineManagementSystem() {
             <TabsContent value="nurses" className="mt-0 h-full">
               <NursesTab />
             </TabsContent>
-            <TabsContent value="gerentes" className="mt-0 h-full">
-              <GerentesTab />
-            </TabsContent>
+          
           </>
         )}
       </Tabs>

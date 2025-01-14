@@ -29,7 +29,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSave, healthPlans }: Un
     noPriceDisplay: false,
     vaccinesPerTimeSlot: 1,
     esquemas: [],
-    healthPlans: [],
+    healthPlans: []
   })
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSave, healthPlans }: Un
         noPriceDisplay: false,
         vaccinesPerTimeSlot: 1,
         esquemas: [],
-        healthPlans: [],
+        healthPlans: []
       })
     }
   }, [unit])
@@ -175,4 +175,3 @@ export function UnitDialog({ open, onOpenChange, unit, onSave, healthPlans }: Un
     </Dialog>
   )
 }
-

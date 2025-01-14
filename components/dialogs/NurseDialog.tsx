@@ -184,7 +184,7 @@ export function NurseDialog({ isOpen, onClose, onSuccess, units, nurse }: NurseD
                       }
                     }}
                   />
-                  <Label htmlFor={`unit-${unit.id}`}>{unit.nome}</Label>
+                  <Label htmlFor={`unit-${unit.id}`}>{unit.name}</Label>
                 </div>
               ))}
             </div>

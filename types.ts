@@ -16,6 +16,7 @@ export interface NurseView {
   user_is_active: string
   unidade_names: string[]
   units: number[]
+  role_id: number
 }
 
 export interface HealthPlan {
@@ -36,4 +37,23 @@ export interface Unit {
   vaccinesPerTimeSlot: number
   esquemas: string[]
   healthPlans: number[]
+}
+
+export interface Patient {
+  id: number
+  name: string
+  cpf: string
+  dateOfBirth: Date
+  address: string
+  email: string
+  phone: string
+}
+
+export interface Appointment {
+  id: number
+  patientId: number
+  date: Date
+  timeSlot: string
+  status: 'scheduled' | 'completed' | 'cancelled'
+  vaccines: string[]
 } 

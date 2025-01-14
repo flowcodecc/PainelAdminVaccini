@@ -26,25 +26,7 @@ export function NursesTab() {
   const fetchUnidades = async () => {
     const { data, error } = await supabase
       .from('unidade')
-      .select(`
-        id,
-        nome,
-        nome_interno,
-        email,
-        telefone,
-        cep,
-        logradouro,
-        numero,
-        complemento,
-        bairro,
-        cidade,
-        estado,
-        status,
-        atende_aplicativo,
-        mostra_precos_unidades,
-        limite_faixa_horario,
-        limite_agendamento
-      `)
+      .select('*')
       .eq('status', true)
       .order('nome')
 
@@ -54,8 +36,20 @@ export function NursesTab() {
     }
 
     if (data) {
-      console.log('Unidades carregadas:', data)
-      setUnidades(data)
+      const formattedUnits: Unit[] = data.map(unit => ({
+        id: unit.id,
+        name: unit.nome,
+        address: `${unit.logradouro}, ${unit.numero}`,
+        cepRange: unit.cep || '',
+        excludedCeps: [],
+        availability: [],
+        notAvailableApp: !unit.atende_aplicativo,
+        noPriceDisplay: !unit.mostra_precos_unidades,
+        vaccinesPerTimeSlot: unit.limite_faixa_horario || 1,
+        esquemas: [],
+        healthPlans: []
+      }))
+      setUnidades(formattedUnits)
     }
   }
 

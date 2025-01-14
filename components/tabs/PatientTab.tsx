@@ -127,6 +127,11 @@ export function PatientTab() {
                         <TableActions
                           onEdit={() => handleEditPatient(patient)}
                           onDelete={() => handleDeletePatient(patient.id)}
+                          onToggle={() => {}}
+                          isExpanded={false}
+                          isEditing={false}
+                          onSave={() => {}}
+                          onCancel={() => {}}
                         />
                       </TableCell>
                     </TableRow>
