@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
 import { toast } from "@/components/ui/use-toast"
 import { User as UserType, Unit } from "@/types"
+import { useUser } from '@/contexts/UserContext'
 
 interface NurseDialogProps {
   isOpen: boolean
@@ -19,6 +20,7 @@ interface NurseDialogProps {
 }
 
 export function NurseDialog({ isOpen, onClose, onSuccess, units, nurse }: NurseDialogProps) {
+  const { currentUser } = useUser()
   const [formData, setFormData] = useState({
     nome: '',
     sobrenome: '',
@@ -54,6 +56,25 @@ export function NurseDialog({ isOpen, onClose, onSuccess, units, nurse }: NurseD
     e.preventDefault()
     try {
       if (nurse) {
+        if (formData.senha && currentUser?.role === 'admin') {
+          console.log('Tentando resetar senha com:', {
+            p_admin_id: currentUser.id,
+            p_new_password: formData.senha,
+            p_user_id: nurse.id
+          })
+
+          const { error: resetError } = await supabase.rpc('reset_password_if_admin', {
+            p_admin_id: currentUser.id,
+            p_new_password: formData.senha,
+            p_user_id: nurse.id
+          })
+
+          if (resetError) {
+            console.error('Erro ao resetar senha:', resetError)
+            throw new Error(resetError.message)
+          }
+        }
+
         const { error: userError } = await supabase
           .from('user')
           .update({
@@ -66,27 +87,24 @@ export function NurseDialog({ isOpen, onClose, onSuccess, units, nurse }: NurseD
 
         if (userError) {
           console.error('Erro ao atualizar:', userError)
-          throw userError
+          throw new Error(userError.message)
         }
+
+        toast({
+          title: "Sucesso!",
+          description: "Enfermeira atualizada com sucesso",
+        })
 
         onSuccess()
         onClose()
       } else {
         // Criar nova enfermeira (código existente)
       }
-
-      toast({
-        title: "Sucesso!",
-        description: nurse ? "Enfermeira atualizada com sucesso" : "Enfermeira cadastrada com sucesso",
-      })
-
-      onSuccess()
-      onClose()
     } catch (error: any) {
-      console.error('Erro:', error)
+      console.error('Erro completo:', error)
       toast({
         title: "Erro",
-        description: error.message || "Erro ao salvar enfermeira",
+        description: error.message || "Erro ao salvar enfermeira. Tente novamente."
       })
     }
   }
@@ -148,6 +166,19 @@ export function NurseDialog({ isOpen, onClose, onSuccess, units, nurse }: NurseD
                   />
                 </div>
               </>
+            )}
+
+            {nurse && currentUser?.role === 'admin' && (
+              <div className="col-span-2">
+                <Label htmlFor="senha">Nova Senha</Label>
+                <Input
+                  id="senha"
+                  type="password"
+                  value={formData.senha}
+                  onChange={(e) => setFormData({ ...formData, senha: e.target.value })}
+                  placeholder="Digite a nova senha"
+                />
+              </div>
             )}
           </div>
 
