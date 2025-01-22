@@ -9,8 +9,10 @@ import { supabase } from '@/lib/supabase'
 import { NurseDialog } from '@/components/dialogs/NurseDialog'
 import { toast } from '@/components/ui/use-toast'
 import { DeleteAlertDialog } from '@/components/ui/alert-dialog'
+import { useUser } from '@/contexts/UserContext'
 
 export function NursesTab() {
+  const { currentUser } = useUser()
   const [showDialog, setShowDialog] = useState(false)
   const [unidades, setUnidades] = useState<Unit[]>([])
   const [nurses, setNurses] = useState<NurseView[]>([])
@@ -80,16 +82,20 @@ export function NursesTab() {
 
   const handleDelete = async (id: string) => {
     try {
-      const { error: userError } = await supabase
-        .from('user')
-        .delete()
-        .eq('id', id)
+      if (!currentUser?.id) {
+        throw new Error('Usuário não autenticado')
+      }
 
-      if (userError) throw userError
+      // Usa a função RPC que vai excluir do auth.users e depois da tabela user
+      const { error: deleteError } = await supabase.rpc('delete_user_if_admin', {
+        p_admin_id: currentUser.id,
+        p_user_id: id
+      })
 
-      const { error: authError } = await supabase.auth.admin.deleteUser(id)
-
-      if (authError) throw authError
+      if (deleteError) {
+        console.error('Erro ao deletar:', deleteError)
+        throw new Error(deleteError.message || 'Erro ao remover enfermeira')
+      }
 
       toast({
         title: "Sucesso",
@@ -97,11 +103,11 @@ export function NursesTab() {
       })
 
       fetchNurses()
-    } catch (error) {
-      console.error('Erro ao deletar:', error)
+    } catch (error: any) {
+      console.error('Erro completo:', error)
       toast({
         title: "Erro",
-        description: "Erro ao remover enfermeira"
+        description: error.message || "Erro ao remover enfermeira"
       })
     }
   }

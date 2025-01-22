@@ -20,6 +20,8 @@ import Image from 'next/image'
 import { LoginScreen } from './LoginScreen'
 import { supabase } from '../lib/supabase'
 import { VacinasProtecaoTab } from './tabs/VacinasProtecaoTab'
+import { GerentesTab } from './tabs/GerentesTab'
+import { useUser } from "@/contexts/UserContext"
 
 export function VaccineManagementSystem() {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
@@ -29,6 +31,7 @@ export function VaccineManagementSystem() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const router = useRouter()
+  const { currentUser: userContextUser } = useUser()
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -131,7 +134,9 @@ export function VaccineManagementSystem() {
             <TabsContent value="nurses" className="mt-0 h-full">
               <NursesTab />
             </TabsContent>
-          
+            <TabsContent value="gerentes" className="mt-0 h-full">
+              <GerentesTab />
+            </TabsContent>
           </>
         )}
       </Tabs>
