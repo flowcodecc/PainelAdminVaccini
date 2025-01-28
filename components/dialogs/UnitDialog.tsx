@@ -5,7 +5,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { MultiSelect } from "@/components/ui/multi-select"
-import { Unit, HealthPlan } from '../../types'
+import { Unit, HealthPlan, UnitSchedule } from '../../types'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { toast } from "@/components/ui/use-toast"
+import { supabase } from "@/lib/supabase"
 
 interface UnitDialogProps {
   open: boolean
@@ -15,40 +18,50 @@ interface UnitDialogProps {
   healthPlans: HealthPlan[]
 }
 
-const availableEsquemas = ['1', '2', '3', '4', '5', '6']
+const DAYS = [
+  { name: 'Domingo', field: 'domingo' },
+  { name: 'Segunda', field: 'segunda_feira' },
+  { name: 'Terça', field: 'terca_feira' },
+  { name: 'Quarta', field: 'quarta_feira' },
+  { name: 'Quinta', field: 'quinta_feira' },
+  { name: 'Sexta', field: 'sexta_feira' },
+  { name: 'Sábado', field: 'sabado' }
+] as const
 
 export function UnitDialog({ open, onOpenChange, unit, onSave, healthPlans }: UnitDialogProps) {
   const [newUnit, setNewUnit] = useState<Unit>({
     id: 0,
-    name: '',
-    address: '',
-    cepRange: '',
-    excludedCeps: [],
-    availability: [],
-    notAvailableApp: false,
-    noPriceDisplay: false,
-    vaccinesPerTimeSlot: 1,
-    esquemas: [],
-    healthPlans: []
+    nome: '',
+    nome_interno: '',
+    email: '',
+    telefone: '',
+    cep: '',
+    logradouro: '',
+    numero: '',
+    complemento: '',
+    bairro: '',
+    cidade: '',
+    estado: '',
+    status: true,
+    atende_aplicativo: true,
+    mostra_precos_unidades: true
+  })
+
+  const [schedule, setSchedule] = useState<UnitSchedule>({
+    id: 0,
+    unit_id: 0,
+    segunda_feira: null,
+    terca_feira: null,
+    quarta_feira: null,
+    quinta_feira: null,
+    sexta_feira: null,
+    sabado: null,
+    domingo: null
   })
 
   useEffect(() => {
     if (unit) {
       setNewUnit(unit)
-    } else {
-      setNewUnit({
-        id: 0,
-        name: '',
-        address: '',
-        cepRange: '',
-        excludedCeps: [],
-        availability: [],
-        notAvailableApp: false,
-        noPriceDisplay: false,
-        vaccinesPerTimeSlot: 1,
-        esquemas: [],
-        healthPlans: []
-      })
     }
   }, [unit])
 
@@ -56,119 +69,156 @@ export function UnitDialog({ open, onOpenChange, unit, onSave, healthPlans }: Un
     setNewUnit((prev: Unit) => ({ ...prev, [field]: value }))
   }
 
+  const handleScheduleChange = (field: keyof UnitSchedule, value: string | null) => {
+    setSchedule(prev => ({ ...prev, [field]: value }))
+  }
+
   const handleSave = () => {
+    // Apenas salva a unidade básica
     onSave(newUnit)
     onOpenChange(false)
   }
 
-  const handleEsquemaChange = (esquema: string) => {
-    setNewUnit((prev: Unit) => ({
-      ...prev,
-      esquemas: prev.esquemas.includes(esquema)
-        ? prev.esquemas.filter(e => e !== esquema)
-        : [...prev.esquemas, esquema]
-    }))
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[80vh] overflow-y-auto bg-white">
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle>{unit ? 'Editar Unidade' : 'Adicionar Nova Unidade'}</DialogTitle>
+          <DialogTitle>{unit ? 'Editar Unidade' : 'Nova Unidade'}</DialogTitle>
         </DialogHeader>
+
         <div className="space-y-4">
           <div>
-            <Label htmlFor="unit-name">Nome da Unidade</Label>
+            <Label htmlFor="nome">Nome da Unidade</Label>
             <Input
-              id="unit-name"
-              value={newUnit.name}
-              onChange={(e) => handleNewUnitChange('name', e.target.value)}
+              id="nome"
+              value={newUnit.nome}
+              onChange={(e) => handleNewUnitChange('nome', e.target.value)}
             />
           </div>
+
           <div>
-            <Label htmlFor="unit-address">Endereço</Label>
+            <Label htmlFor="nome_interno">Nome Interno</Label>
             <Input
-              id="unit-address"
-              value={newUnit.address}
-              onChange={(e) => handleNewUnitChange('address', e.target.value)}
+              id="nome_interno"
+              value={newUnit.nome_interno}
+              onChange={(e) => handleNewUnitChange('nome_interno', e.target.value)}
             />
           </div>
+
           <div>
-            <Label htmlFor="unit-cep-range">Faixa de CEP</Label>
+            <Label htmlFor="email">Email</Label>
             <Input
-              id="unit-cep-range"
-              value={newUnit.cepRange}
-              onChange={(e) => handleNewUnitChange('cepRange', e.target.value)}
+              id="email"
+              value={newUnit.email}
+              onChange={(e) => handleNewUnitChange('email', e.target.value)}
             />
           </div>
+
           <div>
-            <Label htmlFor="unit-excluded-ceps">CEPS não atendidos</Label>
+            <Label htmlFor="telefone">Telefone</Label>
             <Input
-              id="unit-excluded-ceps"
-              value={newUnit.excludedCeps.join(', ')}
-              onChange={(e) => handleNewUnitChange('excludedCeps', e.target.value.split(', '))}
+              id="telefone"
+              value={newUnit.telefone}
+              onChange={(e) => handleNewUnitChange('telefone', e.target.value)}
             />
           </div>
+
           <div>
-            <Label htmlFor="vaccines-per-timeslot">Quantidade de vacinas por faixa de horário</Label>
+            <Label htmlFor="cep">CEP</Label>
             <Input
-              id="vaccines-per-timeslot"
-              type="number"
-              min="1"
-              value={newUnit.vaccinesPerTimeSlot}
-              onChange={(e) => handleNewUnitChange('vaccinesPerTimeSlot', parseInt(e.target.value))}
+              id="cep"
+              value={newUnit.cep}
+              onChange={(e) => handleNewUnitChange('cep', e.target.value)}
             />
           </div>
+
           <div>
-            <Label>Esquemas</Label>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {availableEsquemas.map((esquema) => (
-                <div key={esquema} className="flex items-center">
-                  <Checkbox
-                    id={`esquema-${esquema}`}
-                    checked={newUnit.esquemas.includes(esquema)}
-                    onCheckedChange={() => handleEsquemaChange(esquema)}
-                  />
-                  <Label htmlFor={`esquema-${esquema}`} className="ml-2">
-                    {esquema}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
-            <Label htmlFor="health-plans">Planos de Saúde</Label>
-            <MultiSelect
-              id="health-plans"
-              options={healthPlans ? healthPlans.map(plan => ({ value: plan.id.toString(), label: plan.name })) : []}
-              selected={newUnit.healthPlans.map(id => id.toString())}
-              onChange={(selected) => handleNewUnitChange('healthPlans', selected.map(Number))}
+            <Label htmlFor="logradouro">Logradouro</Label>
+            <Input
+              id="logradouro"
+              value={newUnit.logradouro}
+              onChange={(e) => handleNewUnitChange('logradouro', e.target.value)}
             />
           </div>
+
+          <div>
+            <Label htmlFor="numero">Número</Label>
+            <Input
+              id="numero"
+              value={newUnit.numero}
+              onChange={(e) => handleNewUnitChange('numero', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="complemento">Complemento</Label>
+            <Input
+              id="complemento"
+              value={newUnit.complemento}
+              onChange={(e) => handleNewUnitChange('complemento', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="bairro">Bairro</Label>
+            <Input
+              id="bairro"
+              value={newUnit.bairro}
+              onChange={(e) => handleNewUnitChange('bairro', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="cidade">Cidade</Label>
+            <Input
+              id="cidade"
+              value={newUnit.cidade}
+              onChange={(e) => handleNewUnitChange('cidade', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="estado">Estado</Label>
+            <Input
+              id="estado"
+              value={newUnit.estado}
+              onChange={(e) => handleNewUnitChange('estado', e.target.value)}
+            />
+          </div>
+
           <div className="flex items-center">
             <Checkbox
-              id="not-available-app"
-              checked={newUnit.notAvailableApp}
-              onCheckedChange={(checked) => handleNewUnitChange('notAvailableApp', checked === true)}
-            />
-            <Label htmlFor="not-available-app" className="ml-2">
-              Essa unidade não atende pelo aplicativo
-            </Label>
-          </div>
-          <div className="flex items-center">
-            <Checkbox
-              id="no-price-display"
-              checked={newUnit.noPriceDisplay}
-              onCheckedChange={(checked) =>
-                handleNewUnitChange('noPriceDisplay', checked === true)
+              id="atende_aplicativo"
+              checked={newUnit.atende_aplicativo}
+              onCheckedChange={(checked) => 
+                handleNewUnitChange('atende_aplicativo', checked === true)
               }
             />
-            <Label htmlFor="no-price-display" className="ml-2">
-              Essa unidade não mostra preço
+            <Label htmlFor="atende_aplicativo" className="ml-2">
+              Atende pelo aplicativo
             </Label>
           </div>
-          <Button onClick={handleSave} className="w-full bg-vaccini-primary text-white hover:bg-vaccini-primary/90">
-            {unit ? 'Atualizar Unidade' : 'Adicionar Unidade'}
+
+          <div className="flex items-center">
+            <Checkbox
+              id="mostra_precos_unidades"
+              checked={newUnit.mostra_precos_unidades}
+              onCheckedChange={(checked) =>
+                handleNewUnitChange('mostra_precos_unidades', checked === true)
+              }
+            />
+            <Label htmlFor="mostra_precos_unidades" className="ml-2">
+              Mostra preços
+            </Label>
+          </div>
+        </div>
+
+        <div className="flex justify-end space-x-2">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSave}>
+            {unit ? 'Salvar Alterações' : 'Criar Unidade'}
           </Button>
         </div>
       </DialogContent>

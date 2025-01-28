@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useState, useEffect } from "react"
@@ -215,7 +216,7 @@ export function NurseDialog({ isOpen, onClose, onSuccess, units, nurse }: NurseD
                       }
                     }}
                   />
-                  <Label htmlFor={`unit-${unit.id}`}>{unit.name}</Label>
+                  <Label htmlFor={`unit-${unit.id}`}>{unit.nome}</Label>
                 </div>
               ))}
             </div>

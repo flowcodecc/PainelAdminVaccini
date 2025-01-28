@@ -38,20 +38,7 @@ export function NursesTab() {
     }
 
     if (data) {
-      const formattedUnits: Unit[] = data.map(unit => ({
-        id: unit.id,
-        name: unit.nome,
-        address: `${unit.logradouro}, ${unit.numero}`,
-        cepRange: unit.cep || '',
-        excludedCeps: [],
-        availability: [],
-        notAvailableApp: !unit.atende_aplicativo,
-        noPriceDisplay: !unit.mostra_precos_unidades,
-        vaccinesPerTimeSlot: unit.limite_faixa_horario || 1,
-        esquemas: [],
-        healthPlans: []
-      }))
-      setUnidades(formattedUnits)
+      setUnidades(data)
     }
   }
 
@@ -189,15 +176,8 @@ export function NursesTab() {
 
       <NurseDialog
         isOpen={showDialog}
-        onClose={() => {
-          setShowDialog(false)
-          setSelectedNurse(null)
-        }}
-        onSuccess={() => {
-          setShowDialog(false)
-          setSelectedNurse(null)
-          fetchNurses()
-        }}
+        onClose={() => setShowDialog(false)}
+        onSuccess={fetchNurses}
         units={unidades}
         nurse={selectedNurse}
       />

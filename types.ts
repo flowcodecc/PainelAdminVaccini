@@ -19,6 +19,19 @@ export interface NurseView {
   role_id: number
 }
 
+export interface UnitSchedule {
+  id: number
+  unit_id: number
+  segunda_feira: string | null
+  terca_feira: string | null
+  quarta_feira: string | null
+  quinta_feira: string | null
+  sexta_feira: string | null
+  sabado: string | null
+  domingo: string | null
+  created_at?: string
+}
+
 export interface HealthPlan {
   id: number
   name: string
@@ -27,16 +40,20 @@ export interface HealthPlan {
 
 export interface Unit {
   id: number
-  name: string
-  address: string
-  cepRange: string
-  excludedCeps: string[]
-  availability: any[]
-  notAvailableApp: boolean
-  noPriceDisplay: boolean
-  vaccinesPerTimeSlot: number
-  esquemas: string[]
-  healthPlans: number[]
+  nome: string
+  nome_interno: string
+  email: string
+  telefone: string
+  cep: string
+  logradouro: string
+  numero: string
+  complemento: string
+  bairro: string
+  cidade: string
+  estado: string
+  status: boolean
+  atende_aplicativo: boolean
+  mostra_precos_unidades: boolean
 }
 
 export interface Patient {
