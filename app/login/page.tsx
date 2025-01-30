@@ -1,11 +1,7 @@
 'use client'
 
-import Image from 'next/image'
+import { LoginForm } from "@/components/LoginForm"
 
-<Image 
-  src="/logo-vaccini.png"
-  alt="Logo Vaccini"
-  width={200}
-  height={50}
-  priority
-/> 
+export default function LoginPage() {
+  return <LoginForm />
+} 
