@@ -1,12 +1,13 @@
+'use client'
+
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "@/components/ui/use-toast"
 import { supabase } from "@/lib/supabase"
 import { Unit, UnitSchedule } from '@/types'
+import { PlusCircle, Trash2, Pencil, X } from 'lucide-react'
 
 interface ScheduleDialogProps {
   open: boolean
@@ -15,200 +16,261 @@ interface ScheduleDialogProps {
 }
 
 const DAYS = [
-  { name: 'Domingo', field: 'domingo' },
-  { name: 'Segunda', field: 'segunda_feira' },
-  { name: 'Terça', field: 'terca_feira' },
-  { name: 'Quarta', field: 'quarta_feira' },
-  { name: 'Quinta', field: 'quinta_feira' },
-  { name: 'Sexta', field: 'sexta_feira' },
-  { name: 'Sábado', field: 'sabado' }
+  { name: 'Domingo', value: 'Domingo' },
+  { name: 'Segunda', value: 'Segunda' },
+  { name: 'Terça', value: 'Terca' },
+  { name: 'Quarta', value: 'Quarta' },
+  { name: 'Quinta', value: 'Quinta' },
+  { name: 'Sexta', value: 'Sexta' },
+  { name: 'Sábado', value: 'Sabado' }
 ] as const
 
 export function ScheduleDialog({ open, onOpenChange, unit }: ScheduleDialogProps) {
-  const [schedule, setSchedule] = useState<UnitSchedule>({
-    id: 0,
-    unit_id: unit?.id || 0,
-    segunda_feira: null,
-    terca_feira: null,
-    quarta_feira: null,
-    quinta_feira: null,
-    sexta_feira: null,
-    sabado: null,
-    domingo: null
-  })
+  const [schedules, setSchedules] = useState<UnitSchedule[]>([])
+  const [editingSchedule, setEditingSchedule] = useState<UnitSchedule | null>(null)
 
   useEffect(() => {
-    if (unit) {
-      fetchSchedule()
+    if (unit && open) {
+      fetchSchedules()
     }
-  }, [unit])
+  }, [unit, open])
 
-  const fetchSchedule = async () => {
+  const fetchSchedules = async () => {
     if (!unit) return
 
+    const { data, error } = await supabase
+      .from('unit_schedules')
+      .select('*')
+      .eq('unit_id', unit.id)
+      .order('dia_da_semana', { ascending: true })
+      .order('horario_inicio', { ascending: true })
+
+    if (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar horários",
+      })
+      return
+    }
+
+    setSchedules(data || [])
+  }
+
+  const handleAddSchedule = async (dia: string) => {
     try {
-      // Busca os horários da unidade específica
-      const { data, error } = await supabase
+      if (!unit) return
+
+      // Busca o último horário do dia
+      const { data: lastSchedule } = await supabase
         .from('unit_schedules')
         .select('*')
         .eq('unit_id', unit.id)
+        .eq('dia_da_semana', dia)
+        .order('horario_fim', { ascending: false })
+        .limit(1)
         .single()
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = não encontrado
-        throw error
+      // Define o horário inicial baseado no último horário final
+      const horarioInicio = lastSchedule ? lastSchedule.horario_fim : '08:00'
+      // Define o horário final como 1 hora depois do início
+      const [hora] = horarioInicio.split(':')
+      const horaFim = String(parseInt(hora) + 1).padStart(2, '0')
+      const horarioFim = `${horaFim}:00`
+
+      const newSchedule = {
+        unit_id: unit.id,
+        dia_da_semana: dia,
+        horario_inicio: horarioInicio,
+        horario_fim: horarioFim,
+        max_agendamentos: 0,
+        qtd_agendamentos: 0
       }
 
-      if (data) {
-        // Se encontrou horários, usa eles
-        setSchedule(data)
-      } else {
-        // Se não encontrou, inicializa com valores padrão para esta unidade
-        setSchedule({
-          id: 0,
-          unit_id: unit.id,
-          segunda_feira: null,
-          terca_feira: null,
-          quarta_feira: null,
-          quinta_feira: null,
-          sexta_feira: null,
-          sabado: null,
-          domingo: null
-        })
+      const { data, error } = await supabase
+        .from('unit_schedules')
+        .insert(newSchedule)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Erro detalhado:', error)
+        throw new Error(error.message)
       }
-    } catch (error) {
-      console.error('Erro ao buscar horários:', error)
+
+      fetchSchedules()
+
+      if (data) {
+        setEditingSchedule(data)
+      }
+
+      toast({
+        title: "Sucesso",
+        description: "Novo horário adicionado. Ajuste os valores conforme necessário.",
+      })
+    } catch (error: any) {
+      console.error('Erro completo:', error)
       toast({
         title: "Erro",
-        description: "Erro ao carregar horários. Tente novamente.",
+        description: error.message || "Erro ao adicionar horário",
       })
     }
   }
 
-  const handleScheduleChange = (field: keyof UnitSchedule, value: string | null) => {
-    setSchedule(prev => ({ ...prev, [field]: value }))
+  const handleDeleteSchedule = async (id: number) => {
+    const { error } = await supabase
+      .from('unit_schedules')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao excluir horário",
+      })
+      return
+    }
+
+    fetchSchedules()
+  }
+
+  const handleUpdateSchedule = async (updatedSchedule: UnitSchedule) => {
+    try {
+      const { error } = await supabase
+        .from('unit_schedules')
+        .update({
+          horario_inicio: updatedSchedule.horario_inicio,
+          horario_fim: updatedSchedule.horario_fim,
+          max_agendamentos: updatedSchedule.max_agendamentos
+        })
+        .eq('id', updatedSchedule.id)
+
+      if (error) throw error
+
+      fetchSchedules()
+    } catch (error) {
+      console.error('Erro:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar horário",
+      })
+    }
   }
 
   const handleSave = async () => {
     try {
       if (!unit) return
 
-      // Primeiro verifica se já existe horário para esta unidade
-      const { data: existingSchedule } = await supabase
+      const { error } = await supabase
         .from('unit_schedules')
-        .select('*')
-        .eq('unit_id', unit.id)
-        .maybeSingle()
+        .upsert(schedules.map(schedule => ({
+          ...schedule,
+          unit_id: unit.id
+        })))
 
-      if (existingSchedule) {
-        // Se existe, faz update
-        const { error: updateError } = await supabase
-          .from('unit_schedules')
-          .update({
-            segunda_feira: schedule.segunda_feira || null,
-            terca_feira: schedule.terca_feira || null,
-            quarta_feira: schedule.quarta_feira || null,
-            quinta_feira: schedule.quinta_feira || null,
-            sexta_feira: schedule.sexta_feira || null,
-            sabado: schedule.sabado || null,
-            domingo: schedule.domingo || null
-          })
-          .eq('unit_id', unit.id)
-
-        if (updateError) throw updateError
-        console.log('Horários atualizados')
-      } else {
-        // Se não existe, faz insert usando o ID da unidade
-        const { error: insertError } = await supabase
-          .from('unit_schedules')
-          .insert([{
-            id: unit.id, // Usa o ID da unidade
-            unit_id: unit.id,
-            segunda_feira: schedule.segunda_feira || null,
-            terca_feira: schedule.terca_feira || null,
-            quarta_feira: schedule.quarta_feira || null,
-            quinta_feira: schedule.quinta_feira || null,
-            sexta_feira: schedule.sexta_feira || null,
-            sabado: schedule.sabado || null,
-            domingo: schedule.domingo || null
-          }])
-
-        if (insertError) throw insertError
-        console.log('Novos horários inseridos')
-      }
+      if (error) throw error
 
       toast({
-        title: "Sucesso!",
+        title: "Sucesso",
         description: "Horários salvos com sucesso",
       })
 
       onOpenChange(false)
-    } catch (error: any) {
-      console.error('Erro detalhado:', error)
+    } catch (error) {
+      console.error('Erro:', error)
       toast({
         title: "Erro",
-        description: error.message || "Erro ao salvar horários. Tente novamente.",
+        description: "Erro ao salvar horários",
       })
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Horários de Funcionamento - {unit?.nome}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {DAYS.map(({ name, field }) => (
-            <div key={field} className="border rounded-lg p-4">
+        <div className="space-y-6">
+          {DAYS.map((day) => (
+            <div key={day.value} className="border rounded-lg p-4">
               <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-4">
-                  <Checkbox 
-                    checked={!!schedule[field as keyof UnitSchedule]}
-                    onCheckedChange={(checked) => 
-                      handleScheduleChange(
-                        field as keyof UnitSchedule, 
-                        checked ? '08:00-18:00' : null
-                      )
-                    }
-                  />
-                  <Label className="text-lg font-medium">{name}</Label>
-                </div>
+                <h3 className="text-lg font-medium">{day.name}</h3>
+                <Button onClick={() => handleAddSchedule(day.value)}>
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Adicionar Faixa
+                </Button>
               </div>
 
-              {schedule[field as keyof UnitSchedule] && (
-                <div className="flex items-center space-x-4">
-                  <Input
-                    type="time"
-                    value={(schedule[field as keyof UnitSchedule] as string)?.split('-')[0] || ''}
-                    onChange={(e) => {
-                      const end = (schedule[field as keyof UnitSchedule] as string)?.split('-')[1]
-                      handleScheduleChange(field as keyof UnitSchedule, `${e.target.value}-${end || '18:00'}`)
-                    }}
-                    className="w-32"
-                  />
-                  <span>até</span>
-                  <Input
-                    type="time"
-                    value={(schedule[field as keyof UnitSchedule] as string)?.split('-')[1] || ''}
-                    onChange={(e) => {
-                      const start = (schedule[field as keyof UnitSchedule] as string)?.split('-')[0]
-                      handleScheduleChange(field as keyof UnitSchedule, `${start || '08:00'}-${e.target.value}`)
-                    }}
-                    className="w-32"
-                  />
+              <div className="space-y-4">
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="text-sm text-gray-500">Início</div>
+                  <div className="text-sm text-gray-500">Fim</div>
+                  <div className="text-sm text-gray-500">Quantidade</div>
+                  <div></div>
                 </div>
-              )}
+
+                {schedules
+                  .filter(s => s.dia_da_semana === day.value)
+                  .map((schedule) => (
+                    <div key={schedule.id} className="grid grid-cols-4 gap-4 items-center">
+                      <Input
+                        type="time"
+                        value={schedule.horario_inicio}
+                        onChange={(e) => {
+                          const updatedSchedule = {
+                            ...schedule,
+                            horario_inicio: e.target.value
+                          }
+                          handleUpdateSchedule(updatedSchedule)
+                        }}
+                        className="w-32"
+                      />
+                      <Input
+                        type="time"
+                        value={schedule.horario_fim}
+                        onChange={(e) => {
+                          const updatedSchedule = {
+                            ...schedule,
+                            horario_fim: e.target.value
+                          }
+                          handleUpdateSchedule(updatedSchedule)
+                        }}
+                        className="w-32"
+                      />
+                      <Input
+                        type="number"
+                        value={schedule.max_agendamentos}
+                        onChange={(e) => {
+                          const updatedSchedule = {
+                            ...schedule,
+                            max_agendamentos: parseInt(e.target.value) || 0
+                          }
+                          handleUpdateSchedule(updatedSchedule)
+                        }}
+                        className="w-32"
+                        min="0"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteSchedule(schedule.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
+                  ))}
+              </div>
             </div>
           ))}
         </div>
 
-        <div className="flex justify-end space-x-2 sticky bottom-0 bg-white py-4 border-t">
+        <div className="flex justify-end space-x-2 mt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
           <Button onClick={handleSave}>
-            Salvar Horários
+            Salvar
           </Button>
         </div>
       </DialogContent>

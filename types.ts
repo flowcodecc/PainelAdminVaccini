@@ -22,15 +22,13 @@ export interface NurseView {
 export interface UnitSchedule {
   id: number
   unit_id: number
-  segunda_feira: string | null
-  terca_feira: string | null
-  quarta_feira: string | null
-  quinta_feira: string | null
-  sexta_feira: string | null
-  sabado: string | null
-  domingo: string | null
+  dia_da_semana: string
+  horario_inicio: string
+  horario_fim: string
+  max_agendamentos: number
+  qtd_agendamentos: number
   created_at?: string
-}
+} 
 
 export interface HealthPlan {
   id: number

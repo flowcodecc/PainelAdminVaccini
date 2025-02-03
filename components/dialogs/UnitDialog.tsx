@@ -50,13 +50,11 @@ export function UnitDialog({ open, onOpenChange, unit, onSave, healthPlans }: Un
   const [schedule, setSchedule] = useState<UnitSchedule>({
     id: 0,
     unit_id: 0,
-    segunda_feira: null,
-    terca_feira: null,
-    quarta_feira: null,
-    quinta_feira: null,
-    sexta_feira: null,
-    sabado: null,
-    domingo: null
+    dia_da_semana: '',
+    horario_inicio: '',
+    horario_fim: '',
+    max_agendamentos: 0,
+    qtd_agendamentos: 0
   })
 
   useEffect(() => {
