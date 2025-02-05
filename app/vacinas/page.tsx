@@ -2,19 +2,10 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { VaccinesTab } from "@/components/tabs/VaccinesTab"
-import { useState, useEffect } from "react"
-import { useVaccineStore } from "@/store/vaccineStore"
+import { useState } from "react"
 
 export default function VacinasPage() {
   const [activeTab, setActiveTab] = useState("gerenciar")
-  const { shouldRedirectToPlan, setShouldRedirectToPlan } = useVaccineStore()
-
-  useEffect(() => {
-    if (shouldRedirectToPlan) {
-      setActiveTab("plano")
-      setShouldRedirectToPlan(false)
-    }
-  }, [shouldRedirectToPlan])
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab}>

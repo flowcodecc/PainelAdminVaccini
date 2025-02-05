@@ -9,7 +9,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
 import { toast } from "@/components/ui/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useVaccineStore } from '@/store/vaccineStore'
 import { useRouter } from 'next/navigation'
 
 interface Vaccine {
@@ -38,8 +37,6 @@ export function VaccineDialog({ isOpen, onClose, onSuccess, vaccine }: VaccineDi
     numeroDoses: '',
     esquema_id: null as number | null
   })
-
-  const addVaccineToUpdate = useVaccineStore(state => state.addVaccineToUpdate)
 
   useEffect(() => {
     if (vaccine) {
@@ -103,21 +100,6 @@ export function VaccineDialog({ isOpen, onClose, onSuccess, vaccine }: VaccineDi
           .eq('ref_vacinasID', vaccine.vacina_id)
 
         if (vacinaError) throw vacinaError
-
-        // 2. Se o preço mudou, atualizar o valor do plano
-        if (mudouPreco) {
-          const { error: planoError } = await supabase.rpc('atualizar_valor_plano', {
-            p_vacina_id: vaccine.vacina_id,
-            p_valor: Number(formData.preco)
-          })
-
-          if (planoError) {
-            console.error('Erro ao atualizar valor do plano:', planoError)
-            throw new Error('Erro ao atualizar valor do plano')
-          }
-
-          addVaccineToUpdate(vaccine.vacina_id)
-        }
 
         // Se houve mudanças, continua com a atualização
         if (formData.temDoses && formData.numeroDoses) {
