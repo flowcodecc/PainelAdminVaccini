@@ -19,6 +19,7 @@ import { DeleteAlertDialog } from "@/components/ui/alert-dialog"
 
 interface VaccinesTabProps {
   currentUser: User
+  onPriceChange: () => void
 }
 
 interface Vaccine {
@@ -33,12 +34,13 @@ interface Vaccine {
   percentual: number
 }
 
-export function VaccinesTab({ currentUser }: VaccinesTabProps) {
+export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [vaccines, setVaccines] = useState<Vaccine[]>([])
   const [selectedVaccine, setSelectedVaccine] = useState<Vaccine | undefined>()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [vaccineToDelete, setVaccineToDelete] = useState<number | null>(null)
+  const [vaccinesToUpdate, setVaccinesToUpdate] = useState<Vaccine[]>([])
 
   useEffect(() => {
     fetchVaccines()
@@ -55,51 +57,79 @@ export function VaccinesTab({ currentUser }: VaccinesTabProps) {
     }
   }
 
-  const handleSuccess = () => {
-    fetchVaccines()
+  const handleSuccess = async () => {
+    try {
+      // Buscar vacinas atualizadas
+      const { data: vacinas } = await supabase
+        .from('vw_vacinas_esquemas')
+        .select('*')
+        .order('vacina_id', { ascending: true })
+      
+      if (vacinas) {
+        // Para cada vacina que teve preço alterado, atualizar o valor do plano
+        for (const vacina of vacinas) {
+          if (vaccinesToUpdate.includes(vacina.vacina_id)) {
+            const { error } = await supabase.rpc('atualizar_valor_plano', {
+              p_vacina_id: vacina.vacina_id,
+              p_valor: vacina.preco
+            })
+
+            if (error) {
+              console.error('Erro ao atualizar valor do plano:', error)
+              toast({
+                title: "Erro",
+                description: "Erro ao atualizar valor do plano"
+              })
+            }
+          }
+        }
+      }
+
+      // Recarregar a lista de vacinas
+      fetchVaccines()
+    } catch (error) {
+      console.error('Erro ao atualizar valores:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar valores dos planos"
+      })
+    }
   }
 
   const handleDelete = async (id: number) => {
     try {
-      // Verificar se existem agendamentos nas duas tabelas
-      const { data: agendamentos1 } = await supabase
-        .from('agendamento')
-        .select('id')
-        .eq('vacina_id', id)
-        .limit(1)
+      // 1. Primeiro atualiza a ref_vacinas para remover a referência ao esquema
+      const { error: updateError } = await supabase
+        .from('ref_vacinas')
+        .update({ esquema_id: null })
+        .eq('ref_vacinasID', id)
 
-      const { data: agendamentos2 } = await supabase
-        .from('agendamento_paciente_vacinas')
-        .select('id')
-        .eq('vacina_id', id)
-        .limit(1)
-
-      if ((agendamentos1?.length ?? 0) > 0 || (agendamentos2?.length ?? 0) > 0) {
-        throw new Error('Não é possível excluir esta vacina pois existem agendamentos relacionados.')
+      if (updateError) {
+        console.error('Erro ao atualizar vacina:', updateError)
+        throw new Error('Erro ao atualizar referência do esquema')
       }
 
-      // Verificar e excluir esquema
-      const { data: esquema } = await supabase
+      // 2. Depois exclui o esquema
+      const { error: esquemaError } = await supabase
         .from('esquema')
-        .select('id')
-        .eq('vacina_id', id)
+        .delete()
+        .eq('vacina_fk', id)
 
-      if (esquema && esquema.length > 0) {
-        const { error: esquemaError } = await supabase
-          .from('esquema')
-          .delete()
-          .eq('vacina_id', id)
-
-        if (esquemaError) throw esquemaError
+      if (esquemaError) {
+        console.error('Erro ao excluir esquema:', esquemaError)
+        throw new Error('Erro ao excluir esquema')
       }
 
-      // Excluir a vacina
+      // 3. Por último exclui a vacina
       const { error: vacinaError } = await supabase
         .from('ref_vacinas')
         .delete()
         .eq('ref_vacinasID', id)
 
-      if (vacinaError) throw vacinaError
+      if (vacinaError) {
+        console.error('Erro ao excluir vacina:', vacinaError)
+        throw new Error('Erro ao excluir vacina')
+      }
 
       toast({
         title: "Sucesso!",
@@ -108,11 +138,10 @@ export function VaccinesTab({ currentUser }: VaccinesTabProps) {
 
       fetchVaccines()
     } catch (error: any) {
-      console.error('Erro completo:', error)
-      const errorMessage = error.message || error.details || error.hint || "Erro ao excluir vacina. Tente novamente."
+      console.error('Erro:', error)
       toast({
         title: "Erro",
-        description: errorMessage
+        description: error.message || "Erro ao excluir vacina. Tente novamente.",
       })
     }
   }

@@ -9,6 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
 import { toast } from "@/components/ui/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useVaccineStore } from '@/store/vaccineStore'
+import { useRouter } from 'next/navigation'
 
 interface Vaccine {
   vacina_id: number
@@ -16,6 +18,7 @@ interface Vaccine {
   preco: number
   status: string
   esquema_id: number | null
+  total_doses: number
 }
 
 interface VaccineDialogProps {
@@ -26,6 +29,7 @@ interface VaccineDialogProps {
 }
 
 export function VaccineDialog({ isOpen, onClose, onSuccess, vaccine }: VaccineDialogProps) {
+  const router = useRouter()
   const [formData, setFormData] = useState({
     vacina_nome: '',
     preco: '',
@@ -34,6 +38,8 @@ export function VaccineDialog({ isOpen, onClose, onSuccess, vaccine }: VaccineDi
     numeroDoses: '',
     esquema_id: null as number | null
   })
+
+  const addVaccineToUpdate = useVaccineStore(state => state.addVaccineToUpdate)
 
   useEffect(() => {
     if (vaccine) {
@@ -74,68 +80,149 @@ export function VaccineDialog({ isOpen, onClose, onSuccess, vaccine }: VaccineDi
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      // 1. Primeiro criar a vacina
-      const vacinaData = {
-        nome: formData.vacina_nome,
-        codigo: null,
-        preco: Number(formData.preco),
-        status: formData.status,
-        esquema_id: null
-      }
+      if (vaccine) {
+        const mudouNome = formData.vacina_nome !== vaccine.vacina_nome
+        const mudouPreco = Number(formData.preco) !== vaccine.preco
+        const mudouStatus = formData.status !== (vaccine.status === 'Ativo')
+        const mudouDoses = formData.temDoses !== !!vaccine.esquema_id || 
+                          (formData.temDoses && Number(formData.numeroDoses) !== vaccine.total_doses)
 
-      const { data: novaVacina, error: vacinaError } = await supabase
-        .from('ref_vacinas')
-        .insert([vacinaData])
-        .select()
-        .single()
-
-      if (vacinaError) {
-        console.error('Erro ao criar vacina:', vacinaError)
-        throw new Error('Erro ao criar vacina')
-      }
-
-      // 2. Se tem doses, criar o esquema vinculado à vacina
-      if (formData.temDoses && formData.numeroDoses) {
-        const esquemaData = {
-          vacina_fk: novaVacina.ref_vacinasID,
-          created_at: new Date().toISOString(),
-          dose_1: true,
-          dose_2: Number(formData.numeroDoses) >= 2,
-          dose_3: Number(formData.numeroDoses) >= 3,
-          dose_4: Number(formData.numeroDoses) >= 4,
-          dose_5: Number(formData.numeroDoses) >= 5
+        if (!mudouNome && !mudouPreco && !mudouStatus && !mudouDoses) {
+          onClose()
+          return
         }
 
-        const { data: esquema, error: esquemaError } = await supabase
-          .from('esquema')
-          .insert([esquemaData])
+        // 1. Atualizar a vacina
+        const { error: vacinaError } = await supabase
+          .from('ref_vacinas')
+          .update({
+            nome: formData.vacina_nome,
+            preco: Number(formData.preco),
+            status: formData.status
+          })
+          .eq('ref_vacinasID', vaccine.vacina_id)
+
+        if (vacinaError) throw vacinaError
+
+        // 2. Se o preço mudou, atualizar o valor do plano
+        if (mudouPreco) {
+          const { error: planoError } = await supabase.rpc('atualizar_valor_plano', {
+            p_vacina_id: vaccine.vacina_id,
+            p_valor: Number(formData.preco)
+          })
+
+          if (planoError) {
+            console.error('Erro ao atualizar valor do plano:', planoError)
+            throw new Error('Erro ao atualizar valor do plano')
+          }
+
+          addVaccineToUpdate(vaccine.vacina_id)
+        }
+
+        // Se houve mudanças, continua com a atualização
+        if (formData.temDoses && formData.numeroDoses) {
+          const esquemaData = {
+            vacina_fk: vaccine.vacina_id,
+            dose_1: true,
+            dose_2: Number(formData.numeroDoses) >= 2,
+            dose_3: Number(formData.numeroDoses) >= 3,
+            dose_4: Number(formData.numeroDoses) >= 4,
+            dose_5: Number(formData.numeroDoses) >= 5
+          }
+
+          if (vaccine.esquema_id) {
+            // Atualizar esquema existente
+            const { error: esquemaError } = await supabase
+              .from('esquema')
+              .update(esquemaData)
+              .eq('id', vaccine.esquema_id)
+
+            if (esquemaError) throw esquemaError
+          } else {
+            // Criar novo esquema
+            const { data: esquema, error: esquemaError } = await supabase
+              .from('esquema')
+              .insert([{
+                ...esquemaData,
+                created_at: new Date().toISOString()
+              }])
+              .select()
+              .single()
+
+            if (esquemaError) throw esquemaError
+
+            // Vincular esquema à vacina
+            const { error: updateError } = await supabase
+              .from('ref_vacinas')
+              .update({ esquema_id: esquema.id })
+              .eq('ref_vacinasID', vaccine.vacina_id)
+
+            if (updateError) throw updateError
+          }
+        }
+
+        toast({
+          title: "Sucesso!",
+          description: "Vacina atualizada com sucesso"
+        })
+
+        onSuccess()
+        onClose()
+      } else {
+        // Criar nova vacina
+        const vacinaData = {
+          nome: formData.vacina_nome,
+          codigo: null,
+          preco: Number(formData.preco),
+          status: formData.status,
+          esquema_id: null
+        }
+
+        const { data: novaVacina, error: vacinaError } = await supabase
+          .from('ref_vacinas')
+          .insert([vacinaData])
           .select()
           .single()
 
-        if (esquemaError) {
-          console.error('Erro ao criar esquema:', esquemaError)
-          throw new Error('Erro ao criar esquema de doses')
+        if (vacinaError) throw vacinaError
+
+        // Se tem doses, criar o esquema
+        if (formData.temDoses && formData.numeroDoses) {
+          const esquemaData = {
+            vacina_fk: novaVacina.ref_vacinasID,
+            created_at: new Date().toISOString(),
+            dose_1: true,
+            dose_2: Number(formData.numeroDoses) >= 2,
+            dose_3: Number(formData.numeroDoses) >= 3,
+            dose_4: Number(formData.numeroDoses) >= 4,
+            dose_5: Number(formData.numeroDoses) >= 5
+          }
+
+          const { data: esquema, error: esquemaError } = await supabase
+            .from('esquema')
+            .insert([esquemaData])
+            .select()
+            .single()
+
+          if (esquemaError) throw esquemaError
+
+          // Atualizar a vacina com o esquema_id
+          const { error: updateError } = await supabase
+            .from('ref_vacinas')
+            .update({ esquema_id: esquema.id })
+            .eq('ref_vacinasID', novaVacina.ref_vacinasID)
+
+          if (updateError) throw updateError
         }
 
-        // 3. Atualizar a vacina com o esquema_id
-        const { error: updateError } = await supabase
-          .from('ref_vacinas')
-          .update({ esquema_id: esquema.id })
-          .eq('ref_vacinasID', novaVacina.ref_vacinasID)
+        toast({
+          title: "Sucesso!",
+          description: "Vacina criada com sucesso"
+        })
 
-        if (updateError) {
-          console.error('Erro ao vincular esquema:', updateError)
-          throw new Error('Erro ao vincular esquema à vacina')
-        }
+        onSuccess()
+        onClose()
       }
-
-      toast({
-        title: "Sucesso!",
-        description: "Vacina criada com sucesso"
-      })
-
-      onSuccess()
-      onClose()
     } catch (error: any) {
       console.error('Erro ao salvar:', error)
       toast({

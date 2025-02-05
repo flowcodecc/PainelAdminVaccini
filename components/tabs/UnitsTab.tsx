@@ -50,7 +50,9 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
     estado: '',
     status: true,
     atende_aplicativo: true,
-    mostra_precos_unidades: true
+    mostra_precos_unidades: true,
+    qtd_agendamento_por_faixa: 0,
+    qtd_vacinas_por_faixa: 0
   })
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
 
@@ -74,7 +76,9 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
         estado: selectedUnit.estado || '',
         status: selectedUnit.status || false,
         atende_aplicativo: selectedUnit.atende_aplicativo || false,
-        mostra_precos_unidades: selectedUnit.mostra_precos_unidades || false
+        mostra_precos_unidades: selectedUnit.mostra_precos_unidades || false,
+        qtd_agendamento_por_faixa: selectedUnit.qtd_agendamento_por_faixa || 0,
+        qtd_vacinas_por_faixa: selectedUnit.qtd_vacinas_por_faixa || 0
       })
     }
   }, [selectedUnit])
@@ -111,7 +115,9 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
         estado: String(formData.estado).trim(),
         status: Boolean(formData.status),
         atende_aplicativo: Boolean(formData.atende_aplicativo),
-        mostra_precos_unidades: Boolean(formData.mostra_precos_unidades)
+        mostra_precos_unidades: Boolean(formData.mostra_precos_unidades),
+        qtd_agendamento_por_faixa: formData.qtd_agendamento_por_faixa,
+        qtd_vacinas_por_faixa: formData.qtd_vacinas_por_faixa
       }
 
       let error;
@@ -164,7 +170,9 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
       estado: '',
       status: true,
       atende_aplicativo: true,
-      mostra_precos_unidades: true
+      mostra_precos_unidades: true,
+      qtd_agendamento_por_faixa: 0,
+      qtd_vacinas_por_faixa: 0
     })
   }
 
@@ -478,6 +486,34 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
                       value={formData.estado}
                       onChange={(e) => setFormData(prev => ({ ...prev, estado: e.target.value }))}
                       required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="qtd_agendamento_por_faixa">Agendamentos por Faixa</Label>
+                    <Input
+                      id="qtd_agendamento_por_faixa"
+                      type="number"
+                      min="0"
+                      placeholder="Ex: 10"
+                      value={formData.qtd_agendamento_por_faixa}
+                      onChange={(e) => setFormData(prev => ({ 
+                        ...prev, 
+                        qtd_agendamento_por_faixa: parseInt(e.target.value) || 0 
+                      }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="qtd_vacinas_por_faixa">Vacinas por Faixa</Label>
+                    <Input
+                      id="qtd_vacinas_por_faixa"
+                      type="number"
+                      min="0"
+                      placeholder="Ex: 20"
+                      value={formData.qtd_vacinas_por_faixa}
+                      onChange={(e) => setFormData(prev => ({ 
+                        ...prev, 
+                        qtd_vacinas_por_faixa: parseInt(e.target.value) || 0 
+                      }))}
                     />
                   </div>
                 </div>

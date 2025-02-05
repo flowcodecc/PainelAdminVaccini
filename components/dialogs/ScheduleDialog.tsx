@@ -82,7 +82,6 @@ export function ScheduleDialog({ open, onOpenChange, unit }: ScheduleDialogProps
         dia_da_semana: dia,
         horario_inicio: horarioInicio,
         horario_fim: horarioFim,
-        max_agendamentos: 0,
         qtd_agendamentos: 0
       }
 
@@ -139,8 +138,7 @@ export function ScheduleDialog({ open, onOpenChange, unit }: ScheduleDialogProps
         .from('unit_schedules')
         .update({
           horario_inicio: updatedSchedule.horario_inicio,
-          horario_fim: updatedSchedule.horario_fim,
-          max_agendamentos: updatedSchedule.max_agendamentos
+          horario_fim: updatedSchedule.horario_fim
         })
         .eq('id', updatedSchedule.id)
 
@@ -203,17 +201,16 @@ export function ScheduleDialog({ open, onOpenChange, unit }: ScheduleDialogProps
               </div>
 
               <div className="space-y-4">
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div className="text-sm text-gray-500">Início</div>
                   <div className="text-sm text-gray-500">Fim</div>
-                  <div className="text-sm text-gray-500">Quantidade</div>
                   <div></div>
                 </div>
 
                 {schedules
                   .filter(s => s.dia_da_semana === day.value)
                   .map((schedule) => (
-                    <div key={schedule.id} className="grid grid-cols-4 gap-4 items-center">
+                    <div key={schedule.id} className="grid grid-cols-3 gap-4 items-center">
                       <Input
                         type="time"
                         value={schedule.horario_inicio}
@@ -237,19 +234,6 @@ export function ScheduleDialog({ open, onOpenChange, unit }: ScheduleDialogProps
                           handleUpdateSchedule(updatedSchedule)
                         }}
                         className="w-32"
-                      />
-                      <Input
-                        type="number"
-                        value={schedule.max_agendamentos}
-                        onChange={(e) => {
-                          const updatedSchedule = {
-                            ...schedule,
-                            max_agendamentos: parseInt(e.target.value) || 0
-                          }
-                          handleUpdateSchedule(updatedSchedule)
-                        }}
-                        className="w-32"
-                        min="0"
                       />
                       <Button
                         variant="ghost"

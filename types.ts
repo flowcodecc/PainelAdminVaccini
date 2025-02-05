@@ -25,7 +25,6 @@ export interface UnitSchedule {
   dia_da_semana: string
   horario_inicio: string
   horario_fim: string
-  max_agendamentos: number
   qtd_agendamentos: number
   created_at?: string
 } 
@@ -52,6 +51,8 @@ export interface Unit {
   status: boolean
   atende_aplicativo: boolean
   mostra_precos_unidades: boolean
+  qtd_agendamento_por_faixa?: number
+  qtd_vacinas_por_faixa?: number
 }
 
 export interface Patient {
