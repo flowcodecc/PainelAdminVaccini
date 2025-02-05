@@ -18,8 +18,8 @@ import { toast } from "@/components/ui/use-toast"
 import { DeleteAlertDialog } from "@/components/ui/alert-dialog"
 
 interface VaccinesTabProps {
-  currentUser: User
-  onPriceChange: () => void
+  currentUser?: User
+  onPriceChange?: () => void
 }
 
 interface Vaccine {
@@ -34,7 +34,7 @@ interface Vaccine {
   percentual: number
 }
 
-export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps) {
+export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {}) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [vaccines, setVaccines] = useState<Vaccine[]>([])
   const [selectedVaccine, setSelectedVaccine] = useState<Vaccine | undefined>()
@@ -59,40 +59,10 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps) {
 
   const handleSuccess = async () => {
     try {
-      // Buscar vacinas atualizadas
-      const { data: vacinas } = await supabase
-        .from('vw_vacinas_esquemas')
-        .select('*')
-        .order('vacina_id', { ascending: true })
-      
-      if (vacinas) {
-        // Para cada vacina que teve preço alterado, atualizar o valor do plano
-        for (const vacina of vacinas) {
-          if (vaccinesToUpdate.includes(vacina.vacina_id)) {
-            const { error } = await supabase.rpc('atualizar_valor_plano', {
-              p_vacina_id: vacina.vacina_id,
-              p_valor: vacina.preco
-            })
-
-            if (error) {
-              console.error('Erro ao atualizar valor do plano:', error)
-              toast({
-                title: "Erro",
-                description: "Erro ao atualizar valor do plano"
-              })
-            }
-          }
-        }
-      }
-
-      // Recarregar a lista de vacinas
-      fetchVaccines()
+      await fetchVaccines()
+      onPriceChange?.()
     } catch (error) {
-      console.error('Erro ao atualizar valores:', error)
-      toast({
-        title: "Erro",
-        description: "Erro ao atualizar valores dos planos"
-      })
+      console.error('Erro:', error)
     }
   }
 
