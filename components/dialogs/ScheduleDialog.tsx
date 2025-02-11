@@ -1,18 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { toast } from "@/components/ui/use-toast"
-import { supabase } from "@/lib/supabase"
+import { supabase } from '@/lib/supabase'
 import { Unit, UnitSchedule } from '@/types'
 import { PlusCircle, Trash2, Pencil, X } from 'lucide-react'
 
 interface ScheduleDialogProps {
+  unit: Unit | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  unit: Unit | null
+  onSuccess: () => void
 }
 
 const DAYS = [
@@ -25,15 +27,21 @@ const DAYS = [
   { name: 'Sábado', value: 'Sabado' }
 ] as const
 
-export function ScheduleDialog({ open, onOpenChange, unit }: ScheduleDialogProps) {
+export function ScheduleDialog({ unit, open, onOpenChange, onSuccess }: ScheduleDialogProps) {
   const [schedules, setSchedules] = useState<UnitSchedule[]>([])
-  const [editingSchedule, setEditingSchedule] = useState<UnitSchedule | null>(null)
+  const [newSchedule, setNewSchedule] = useState<Omit<UnitSchedule, 'id'>>({
+    unit_id: unit?.id || 0,
+    dia_da_semana: '',
+    horario_inicio: '',
+    horario_fim: '',
+    qtd_agendamentos: 1
+  })
 
   useEffect(() => {
-    if (unit && open) {
+    if (unit) {
       fetchSchedules()
     }
-  }, [unit, open])
+  }, [unit])
 
   const fetchSchedules = async () => {
     if (!unit) return
@@ -42,13 +50,11 @@ export function ScheduleDialog({ open, onOpenChange, unit }: ScheduleDialogProps
       .from('unit_schedules')
       .select('*')
       .eq('unit_id', unit.id)
-      .order('dia_da_semana', { ascending: true })
-      .order('horario_inicio', { ascending: true })
 
     if (error) {
       toast({
         title: "Erro",
-        description: "Erro ao carregar horários",
+        description: "Erro ao buscar horários"
       })
       return
     }
@@ -56,206 +62,88 @@ export function ScheduleDialog({ open, onOpenChange, unit }: ScheduleDialogProps
     setSchedules(data || [])
   }
 
-  const handleAddSchedule = async (dia: string) => {
-    try {
-      if (!unit) return
+  const handleSave = async () => {
+    if (!unit) return
 
-      // Busca o último horário do dia
-      const { data: lastSchedule } = await supabase
-        .from('unit_schedules')
-        .select('*')
-        .eq('unit_id', unit.id)
-        .eq('dia_da_semana', dia)
-        .order('horario_fim', { ascending: false })
-        .limit(1)
-        .single()
-
-      // Define o horário inicial baseado no último horário final
-      const horarioInicio = lastSchedule ? lastSchedule.horario_fim : '08:00'
-      // Define o horário final como 1 hora depois do início
-      const [hora] = horarioInicio.split(':')
-      const horaFim = String(parseInt(hora) + 1).padStart(2, '0')
-      const horarioFim = `${horaFim}:00`
-
-      const newSchedule = {
-        unit_id: unit.id,
-        dia_da_semana: dia,
-        horario_inicio: horarioInicio,
-        horario_fim: horarioFim,
-        qtd_agendamentos: 0
-      }
-
-      const { data, error } = await supabase
-        .from('unit_schedules')
-        .insert(newSchedule)
-        .select()
-        .single()
-
-      if (error) {
-        console.error('Erro detalhado:', error)
-        throw new Error(error.message)
-      }
-
-      fetchSchedules()
-
-      if (data) {
-        setEditingSchedule(data)
-      }
-
-      toast({
-        title: "Sucesso",
-        description: "Novo horário adicionado. Ajuste os valores conforme necessário.",
-      })
-    } catch (error: any) {
-      console.error('Erro completo:', error)
-      toast({
-        title: "Erro",
-        description: error.message || "Erro ao adicionar horário",
-      })
-    }
-  }
-
-  const handleDeleteSchedule = async (id: number) => {
     const { error } = await supabase
       .from('unit_schedules')
-      .delete()
-      .eq('id', id)
+      .insert({
+        ...newSchedule,
+        unit_id: unit.id
+      })
 
     if (error) {
       toast({
         title: "Erro",
-        description: "Erro ao excluir horário",
+        description: "Erro ao salvar horário"
       })
       return
     }
 
+    toast({
+      title: "Sucesso",
+      description: "Horário salvo com sucesso"
+    })
+
     fetchSchedules()
-  }
-
-  const handleUpdateSchedule = async (updatedSchedule: UnitSchedule) => {
-    try {
-      const { error } = await supabase
-        .from('unit_schedules')
-        .update({
-          horario_inicio: updatedSchedule.horario_inicio,
-          horario_fim: updatedSchedule.horario_fim
-        })
-        .eq('id', updatedSchedule.id)
-
-      if (error) throw error
-
-      fetchSchedules()
-    } catch (error) {
-      console.error('Erro:', error)
-      toast({
-        title: "Erro",
-        description: "Erro ao atualizar horário",
-      })
-    }
-  }
-
-  const handleSave = async () => {
-    try {
-      if (!unit) return
-
-      const { error } = await supabase
-        .from('unit_schedules')
-        .upsert(schedules.map(schedule => ({
-          ...schedule,
-          unit_id: unit.id
-        })))
-
-      if (error) throw error
-
-      toast({
-        title: "Sucesso",
-        description: "Horários salvos com sucesso",
-      })
-
-      onOpenChange(false)
-    } catch (error) {
-      console.error('Erro:', error)
-      toast({
-        title: "Erro",
-        description: "Erro ao salvar horários",
-      })
-    }
+    onSuccess()
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>Horários de Funcionamento - {unit?.nome}</DialogTitle>
+          <DialogTitle>Horários - {unit?.nome}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {DAYS.map((day) => (
-            <div key={day.value} className="border rounded-lg p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium">{day.name}</h3>
-                <Button onClick={() => handleAddSchedule(day.value)}>
-                  <PlusCircle className="h-4 w-4 mr-2" />
-                  Adicionar Faixa
-                </Button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-sm text-gray-500">Início</div>
-                  <div className="text-sm text-gray-500">Fim</div>
-                  <div></div>
-                </div>
-
-                {schedules
-                  .filter(s => s.dia_da_semana === day.value)
-                  .map((schedule) => (
-                    <div key={schedule.id} className="grid grid-cols-3 gap-4 items-center">
-                      <Input
-                        type="time"
-                        value={schedule.horario_inicio}
-                        onChange={(e) => {
-                          const updatedSchedule = {
-                            ...schedule,
-                            horario_inicio: e.target.value
-                          }
-                          handleUpdateSchedule(updatedSchedule)
-                        }}
-                        className="w-32"
-                      />
-                      <Input
-                        type="time"
-                        value={schedule.horario_fim}
-                        onChange={(e) => {
-                          const updatedSchedule = {
-                            ...schedule,
-                            horario_fim: e.target.value
-                          }
-                          handleUpdateSchedule(updatedSchedule)
-                        }}
-                        className="w-32"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteSchedule(schedule.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
-                  ))}
-              </div>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Dia da Semana</Label>
+              <Input
+                value={newSchedule.dia_da_semana}
+                onChange={(e) => setNewSchedule(prev => ({ ...prev, dia_da_semana: e.target.value }))}
+              />
             </div>
-          ))}
-        </div>
+            <div>
+              <Label>Horário Início</Label>
+              <Input
+                type="time"
+                value={newSchedule.horario_inicio}
+                onChange={(e) => setNewSchedule(prev => ({ ...prev, horario_inicio: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label>Horário Fim</Label>
+              <Input
+                type="time"
+                value={newSchedule.horario_fim}
+                onChange={(e) => setNewSchedule(prev => ({ ...prev, horario_fim: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label>Qtd. Agendamentos</Label>
+              <Input
+                type="number"
+                min="1"
+                value={newSchedule.qtd_agendamentos}
+                onChange={(e) => setNewSchedule(prev => ({ ...prev, qtd_agendamentos: parseInt(e.target.value) || 1 }))}
+              />
+            </div>
+          </div>
 
-        <div className="flex justify-end space-x-2 mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSave}>
-            Salvar
-          </Button>
+          <Button onClick={handleSave}>Adicionar Horário</Button>
+
+          <div className="mt-4">
+            <h3 className="font-semibold mb-2">Horários Cadastrados</h3>
+            {schedules.map((schedule) => (
+              <div key={schedule.id} className="flex justify-between items-center p-2 border rounded mb-2">
+                <span>{schedule.dia_da_semana}</span>
+                <span>{schedule.horario_inicio} - {schedule.horario_fim}</span>
+                <span>{schedule.qtd_agendamentos} agendamentos</span>
+              </div>
+            ))}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

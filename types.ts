@@ -56,7 +56,7 @@ export interface Unit {
 }
 
 export interface Patient {
-  id: number
+  id: string
   name: string
   cpf: string
   dateOfBirth: Date
@@ -67,9 +67,15 @@ export interface Patient {
 
 export interface Appointment {
   id: number
-  patientId: number
-  date: Date
-  timeSlot: string
+  patient_id: string
+  unit_id: number
+  scheduled_date: Date
+  time_slot: string
   status: 'scheduled' | 'completed' | 'cancelled'
-  vaccines: string[]
+  payment_method: string
+  unit_name: string
+  patient_name: string
+  patient_email: string
+  patient_phone: string
+  vaccines?: string[]
 } 

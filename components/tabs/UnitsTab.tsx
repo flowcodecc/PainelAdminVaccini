@@ -569,6 +569,7 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
             open={isScheduleDialogOpen}
             onOpenChange={setIsScheduleDialogOpen}
             unit={selectedUnit}
+            onSuccess={fetchUnits}
           />
         </CardContent>
       </Card>

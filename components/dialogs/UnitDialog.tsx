@@ -12,10 +12,10 @@ import { supabase } from "@/lib/supabase"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 
 interface UnitDialogProps {
+  unit: Unit | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  unit: Unit | null
-  onSave: (unit: Unit) => void
+  onSuccess: () => void
   healthPlans: HealthPlan[]
 }
 
@@ -29,7 +29,7 @@ const DAYS = [
   { name: 'Sábado', field: 'sabado' }
 ] as const
 
-export function UnitDialog({ open, onOpenChange, unit, onSave, healthPlans }: UnitDialogProps) {
+export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }: UnitDialogProps) {
   const [newUnit, setNewUnit] = useState<Unit>({
     id: 0,
     nome: '',
@@ -134,7 +134,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSave, healthPlans }: Un
         description: newUnit.id ? "Unidade atualizada com sucesso" : "Unidade criada com sucesso",
       })
 
-      onSave(newUnit)
+      onSuccess()
       onOpenChange(false)
     } catch (error) {
       console.error('Erro:', error)
