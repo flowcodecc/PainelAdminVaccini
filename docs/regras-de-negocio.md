@@ -187,3 +187,30 @@
 - O sistema deve implementar autenticação segura para todos os usuários.
 - As senhas devem ser armazenadas de forma criptografada.
 - O sistema deve implementar controle de acesso baseado em papéis.
+
+
+## 11.Manipulação dos Dados de Agendamento
+
+A página de agendamento deve permitir a filtragem e exibição dos pacientes, horários, unidades e formas de pagamento de forma organizada e dinâmica. O objetivo é garantir que os usuários possam visualizar e gerenciar as informações de agendamento de maneira eficiente, com base em critérios específicos.
+
+1. Manipulação dos Dados de Agendamento:
+
+Exibir uma lista de pacientes agendados, incluindo nome, horário, unidade de atendimento e forma de pagamento.
+
+Carregar os dados dinamicamente a partir do banco de dados ou API, garantindo uma organização clara e acessível.
+
+2. Filtros para Visualização:
+
+Unidade: Filtragem por unidade de atendimento, permitindo ao usuário selecionar uma unidade específica para visualizar apenas os agendamentos correspondentes.
+
+Horário: Opção de filtragem por intervalo de tempo (manhã, tarde ou horário personalizado).
+
+Forma de Pagamento: Filtro baseado na forma de pagamento utilizada pelo paciente (cartão, dinheiro, plano de saúde, etc.).
+
+3. Funcionalidades Esperadas:
+
+Carregamento Dinâmico: Atualização dos dados conforme os filtros são aplicados, sem necessidade de recarregar a página.
+
+Ordenação: Opção de ordenar os agendamentos por horário, nome do paciente ou unidade.
+
+Exibição Detalhada: Possibilidade de visualizar detalhes completos do agendamento, incluindo informações do paciente, procedimento agendado, unidade, horário e forma de pagamento.
