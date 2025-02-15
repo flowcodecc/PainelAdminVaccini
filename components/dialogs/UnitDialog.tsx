@@ -50,13 +50,12 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
     qtd_vacinas_por_faixa: 0
   })
 
-  const [schedule, setSchedule] = useState<UnitSchedule>({
+  const [schedules, setSchedules] = useState<UnitSchedule>({
     id: 0,
     unit_id: 0,
     dia_da_semana: '',
     horario_inicio: '',
-    horario_fim: '',
-    qtd_agendamentos: 0
+    horario_fim: ''
   })
 
   useEffect(() => {
@@ -74,7 +73,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
   }
 
   const handleScheduleChange = (field: keyof UnitSchedule, value: string | null) => {
-    setSchedule(prev => ({ ...prev, [field]: value }))
+    setSchedules(prev => ({ ...prev, [field]: value }))
   }
 
   const handleSave = async () => {
