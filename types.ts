@@ -25,9 +25,8 @@ export interface UnitSchedule {
   dia_da_semana: string
   horario_inicio: string
   horario_fim: string
-  qtd_agendamentos: number
   created_at?: string
-} 
+}
 
 export interface HealthPlan {
   id: number
