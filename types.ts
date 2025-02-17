@@ -66,15 +66,42 @@ export interface Patient {
 
 export interface Appointment {
   id: number
-  patient_id: string
-  unit_id: number
+  patient_name: string
   scheduled_date: Date
   time_slot: string
-  status: 'scheduled' | 'completed' | 'cancelled'
-  payment_method: string
+  status: string
   unit_name: string
-  patient_name: string
-  patient_email: string
-  patient_phone: string
-  vaccines?: string[]
-} 
+  vaccines: Array<{
+    id: number
+    nome: string
+    preco: number
+  }>
+  valor_total: number
+  patient_id?: string
+  unit_id?: number
+  payment_method?: string
+  patient_email?: string
+  patient_phone?: string
+}
+
+export interface Vaccine {
+  ref_vacinasID: number
+  nome: string
+  codigo: string
+  preco: number
+  status: boolean
+  valor_plano: number
+  esquema_id: number
+  esquema?: VaccineScheme
+}
+
+export interface VaccineScheme {
+  id: number
+  dose_1: boolean
+  dose_2: boolean
+  dose_3: boolean
+  dose_4: boolean
+  dose_5: boolean
+}
+
+export * from './types/payment' 

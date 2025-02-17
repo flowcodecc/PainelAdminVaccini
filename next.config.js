@@ -5,7 +5,7 @@ const nextConfig = {
     domains: ['hebbkx1anhila5yf.public.blob.vercel-storage.com'],
   },
   experimental: {
-    appDir: true
+    serverActions: true
   },
   webpack: (config) => {
     config.resolve.fallback = { fs: false, net: false, tls: false }

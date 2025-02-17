@@ -11,8 +11,10 @@ import { supabase } from '@/lib/supabase'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { CirclePlus, Edit, Trash2 } from "lucide-react"
-import { Unit, Patient, Appointment, UnitSchedule } from '@/types'
+import { CirclePlus, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react"
+import { Unit, Patient, Appointment, UnitSchedule, Vaccine } from '@/types'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 export function AppointmentsTab() {
   const [units, setUnits] = useState<Unit[]>([])
@@ -25,6 +27,19 @@ export function AppointmentsTab() {
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<number>(0)
   const [paymentMethods, setPaymentMethods] = useState<{id: number, nome: string}[]>([])
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<number>(0)
+  const [vaccines, setVaccines] = useState<Vaccine[]>([])
+  const [selectedVaccines, setSelectedVaccines] = useState<{vaccineId: number, dose: number}[]>([])
+  const [selectedVaccineId, setSelectedVaccineId] = useState<string>('')
+  const [selectedDose, setSelectedDose] = useState<number>(0)
+  const [totalValue, setTotalValue] = useState<number>(0)
+  const [appointmentsByDay, setAppointmentsByDay] = useState<Record<string, Appointment[]>>({})
+  const [activeTab, setActiveTab] = useState<string>("list")
+  const [filterUnit, setFilterUnit] = useState<number>(0)
+  const [filterStatus, setFilterStatus] = useState<string>('')
+  const [filterDateRange, setFilterDateRange] = useState<{
+    from: Date | undefined
+    to: Date | undefined
+  }>({ from: undefined, to: undefined })
 
   // 🔥 Busca unidades disponíveis
   const fetchUnits = async () => {
@@ -40,22 +55,35 @@ export function AppointmentsTab() {
     setUnits(data || [])
   }
 
-  // 🔥 Busca pacientes ativos
+  // 🔥 Busca pacientes (usuários sem role)
   const fetchPatients = async () => {
-    const { data, error } = await supabase
-      .from('user')
-      .select('*')
-      .is('user_role_id', null)
-      .eq('is_active', true)
+    try {
+      const { data, error } = await supabase
+        .from('user')
+        .select('*')  // Selecionar todos os campos
+        .is('user_role_id', null)
+        .eq('is_active', true)
 
-    if (error) {
-      console.error('Erro ao buscar pacientes:', error)
-      return
+      if (error) throw error
+
+      const formattedPatients: Patient[] = data?.map(user => ({
+        id: user.id,
+        name: `${user.nome} ${user.sobrenome || ''}`.trim(),
+        cpf: user.cpf || '',
+        dateOfBirth: new Date(user.data_nascimento),
+        address: user.endereco || '',
+        email: user.email,
+        phone: user.telefone || ''
+      })) || []
+
+      setPatients(formattedPatients)
+    } catch (err) {
+      console.error('Erro:', err)
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar pacientes"
+      })
     }
-
-    console.log('pacientes', data)
-
-    setPatients(data || [])
   }
 
   // 🔥 Busca os horários disponíveis
@@ -72,10 +100,7 @@ export function AppointmentsTab() {
       }
 
       const dayOfWeek = diasSemana[date.getDay()]
-
-      console.log(dayOfWeek)
-      console.log(unit_id)
-
+      
       const { data: schedules, error } = await supabase
         .from('unit_schedules')
         .select('*')
@@ -87,15 +112,19 @@ export function AppointmentsTab() {
           title: "Erro",
           description: "Erro ao buscar horários"
         })
+        setAvailableTimeSlots([])
         return
       }
 
-      if (!schedules?.length) {
-        toast({
+      // Verifica se retornou algum horário
+      if (!schedules || schedules.length === 0) {
+    toast({
           title: "Aviso",
-          description: "Nenhum horário disponível neste dia"
+          description: "Nenhum horário de atendimento para esse dia da semana",
+          duration: 3000
         })
         setAvailableTimeSlots([])
+        setSelectedTimeSlot(0)
         return
       }
 
@@ -107,187 +136,813 @@ export function AppointmentsTab() {
         title: "Erro",
         description: "Erro ao buscar horários"
       })
+      setAvailableTimeSlots([])
     }
   }
 
   const fetchPaymentMethods = async () => {
-    const { data, error } = await supabase
-      .from('ref_formas_pagamento')
-      .select('*')
+    try {
+      // Buscar da tabela ref_formas_pagamentos
+      const { data, error } = await supabase
+        .from('ref_formas_pagamentos')
+        .select('id, nome')
+        .order('id')
 
-    //setPaymentMethods(data || [])
-    setPaymentMethods([{id: 1, nome: 'Pix'}, {id: 2, nome: 'Cartão de crédito'}, {id: 3, nome: 'Cartão de débito'}, {id: 4, nome: 'Dinheiro'}])
+      if (error) {
+        console.error('Erro ao buscar formas de pagamento:', error)
+        return
+      }
+
+      console.log('Formas de pagamento:', data) // Debug
+
+      if (data && data.length > 0) {
+        setPaymentMethods(data)
+      } else {
+        // Se não houver dados, usar valores padrão
+        setPaymentMethods([
+          { id: 1, nome: 'Pix' },
+          { id: 2, nome: 'Cartão de Crédito' },
+          { id: 3, nome: 'Cartão de Débito' }
+        ])
+      }
+    } catch (error) {
+      console.error('Erro:', error)
+    toast({
+        title: "Erro",
+        description: "Erro ao carregar formas de pagamento"
+      })
+    }
+  }
+
+  const fetchVaccines = async () => {
+    const { data, error } = await supabase
+      .from('ref_vacinas')
+      .select(`
+        *,
+        esquema:esquema_id (
+          id,
+          dose_1,
+          dose_2,
+          dose_3,
+          dose_4,
+          dose_5
+        )
+      `)
+      .eq('status', true)
+
+    if (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar vacinas"
+      })
+      return
+    }
+
+    setVaccines(data || [])
+  }
+
+  // Adicionar função para buscar agendamentos
+  const fetchAppointments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('agendamento')
+        .select(`
+          *,
+          user:user_id (nome, sobrenome),
+          unidade:unidade_id (nome),
+          status:status_id (nome),
+          forma_pagamento:forma_pagamento_id (nome)
+        `)
+        .eq('status_id', 1)
+        .order('horario', { ascending: true })
+
+      if (error) throw error
+
+      const formattedAppointments = await Promise.all(data
+        .filter(appointment => appointment.user && appointment.unidade)
+        .map(async appointment => {
+          const { data: vaccinesData } = await supabase
+            .from('ref_vacinas')
+            .select('ref_vacinasID, nome, preco')
+            .in('ref_vacinasID', appointment.vacinas_id || [])
+
+          return {
+            id: appointment.id,
+            patient_name: `${appointment.user.nome} ${appointment.user.sobrenome || ''}`.trim(),
+            scheduled_date: new Date(appointment.dia),
+            time_slot: appointment.horario,
+            status: appointment.status?.nome || 'Pendente',
+            unit_name: appointment.unidade.nome,
+            unit_id: appointment.unidade_id,
+            vaccines: (vaccinesData || []).map(v => ({
+              id: v.ref_vacinasID,
+              nome: v.nome,
+              preco: v.preco
+            })),
+            valor_total: appointment.valor_total
+          }
+        }))
+
+      setAppointments(formattedAppointments)
+      
+      // Organizar por dia
+      const byDay = formattedAppointments.reduce((acc, appointment) => {
+        const day = format(appointment.scheduled_date, 'yyyy-MM-dd')
+        if (!acc[day]) acc[day] = []
+        acc[day].push(appointment)
+        return acc
+      }, {} as Record<string, Appointment[]>)
+
+      setAppointmentsByDay(byDay)
+    } catch (error) {
+      console.error('Erro:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar agendamentos"
+      })
+    }
   }
 
   useEffect(() => {
     fetchUnits()
     fetchPatients()
     fetchPaymentMethods()
+    fetchVaccines()
+    fetchAppointments()
   }, [])
 
-  const handleScheduleAppointment = () => {
-    console.log('Agendando consulta')
+  useEffect(() => {
+    const total = selectedVaccines.reduce((sum, { vaccineId }) => {
+      const vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
+      return sum + (vaccine?.preco || 0)
+    }, 0)
+    setTotalValue(total)
+  }, [selectedVaccines, vaccines])
+
+  useEffect(() => {
+    if (selectedUnit) {
+      fetchAppointments()
+    } else {
+      setAppointments([])
+      setAppointmentsByDay({})
+    }
+  }, [selectedUnit])
+
+  const handleScheduleAppointment = async () => {
+    try {
+      if (!selectedUnit || !selectedDate || !selectedTimeSlot || !selectedPatient || !selectedPaymentMethod || selectedVaccines.length === 0) {
+        toast({
+          title: "Erro",
+          description: "Preencha todos os campos obrigatórios"
+        })
+        return
+      }
+
+      const timeSlot = availableTimeSlots.find(s => s.id === selectedTimeSlot)
+      
+      const { error } = await supabase
+        .from('agendamento')
+        .insert({
+          user_id: selectedPatient,
+          unidade_id: selectedUnit,
+          vacinas_id: selectedVaccines.map(v => v.vaccineId),
+          forma_pagamento_id: selectedPaymentMethod,
+          valor_total: totalValue,
+          horario: timeSlot?.horario_inicio,
+          dia: selectedDate,
+          status: 1,
+          status_id: 1
+        })
+
+      if (error) throw error
+
+      // Recarregar dados
+      await fetchAppointments()
+
+      toast({
+        title: "Sucesso",
+        description: "Agendamento realizado com sucesso!"
+      })
+
+      // Limpar formulário
+      setSelectedDate(undefined)
+      setSelectedTimeSlot(0)
+      setSelectedPatient('')
+      setSelectedPaymentMethod(0)
+      setSelectedVaccines([])
+      setAvailableTimeSlots([])
+      setActiveTab('list') // Volta para a lista
+
+    } catch (error) {
+      console.error('Erro:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao realizar agendamento. Tente novamente."
+      })
+    }
   }
 
+  const filteredAppointments = appointments.filter(appointment => {
+    let matches = true
+
+    if (filterUnit && appointment.unit_id !== filterUnit) {
+      matches = false
+    }
+
+    if (filterStatus && appointment.status !== filterStatus) {
+      matches = false
+    }
+
+    if (filterDateRange.from || filterDateRange.to) {
+      const appointmentDate = new Date(appointment.scheduled_date)
+      if (filterDateRange.from && appointmentDate < filterDateRange.from) {
+        matches = false
+      }
+      if (filterDateRange.to && appointmentDate > filterDateRange.to) {
+        matches = false
+      }
+    }
+
+    return matches
+  })
+
   return (
-    <div className="w-full h-full flex flex-col">
-      <h2 className="text-2xl font-semibold mb-4">Agendamentos</h2>
-      <Tabs defaultValue="schedule">
-        <TabsList>
-          <TabsTrigger value="appointments">Agendamentos</TabsTrigger>
-          <TabsTrigger value="schedule">Agendar</TabsTrigger>
+    <div className="w-full h-full flex flex-col space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-gray-900">Agendamentos</h2>
+        <Button onClick={() => setActiveTab("new")} className="bg-primary">
+          <CirclePlus className="h-4 w-4 mr-2" />
+          Novo Agendamento
+        </Button>
+      </div>
+
+      <Tabs defaultValue="list" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+          <TabsTrigger value="list">Lista</TabsTrigger>
+          <TabsTrigger value="calendar">Calendário</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="schedule">
+        <TabsContent value="list">
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="unit">Unidade</Label>
-              <Select 
-                onValueChange={(value) => setSelectedUnit(parseInt(value))}
-                value={selectedUnit.toString()}
-              >
-                <SelectTrigger id="unit">
-                  <SelectValue placeholder="Selecione uma unidade" />
-                </SelectTrigger>
-                <SelectContent>
-                  {units.map((unit) => (
-                    <SelectItem key={unit.id} value={unit.id.toString()}>
-                      {unit.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="bg-white p-4 rounded-lg border shadow-sm">
+              <h3 className="text-sm font-medium mb-4">Filtros</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label>Unidade</Label>
+                  <Select
+                    value={filterUnit.toString()}
+                    onValueChange={(value) => setFilterUnit(parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas as unidades" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">Todas as unidades</SelectItem>
+                      {units.map((unit) => (
+                        <SelectItem key={unit.id} value={unit.id.toString()}>
+                          {unit.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Status</Label>
+                  <Select
+                    value={filterStatus}
+                    onValueChange={setFilterStatus}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos os status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os status</SelectItem>
+                      <SelectItem value="Pendente">Pendente</SelectItem>
+                      <SelectItem value="Concluído">Concluído</SelectItem>
+                      <SelectItem value="Cancelado">Cancelado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Período</Label>
+                  <div className="flex items-center gap-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-[180px] justify-start text-left font-normal">
+                          {filterDateRange.from ? (
+                            format(filterDateRange.from, 'dd/MM/yyyy')
+                          ) : (
+                            <span className="text-muted-foreground">Data inicial</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={filterDateRange.from}
+                          onSelect={(date) => setFilterDateRange(prev => ({ ...prev, from: date }))}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+
+                    <span>até</span>
+
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-[180px] justify-start text-left font-normal">
+                          {filterDateRange.to ? (
+                            format(filterDateRange.to, 'dd/MM/yyyy')
+                          ) : (
+                            <span className="text-muted-foreground">Data final</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={filterDateRange.to}
+                          onSelect={(date) => setFilterDateRange(prev => ({ ...prev, to: date }))}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {selectedUnit > 0 && (
-              <div>
-                <Label>Data</Label>
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    if (date) {
-                      setSelectedDate(date)
-                      fetchAvailableTimeSlots(selectedUnit, date)
-                    }
-                  }}
-                  locale={ptBR}
-                  className="rounded-md border"
-                />
-              </div>
-            )}
-
-            {availableTimeSlots.length > 0 && (
-              <div>
-                <Label>Horário</Label>
-                <Select
-                  onValueChange={(value) => setSelectedTimeSlot(parseInt(value))}
-                  value={selectedTimeSlot.toString()}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um horário" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableTimeSlots.map((slot) => (
-                      <SelectItem key={slot.id} value={slot.id.toString()}>
-                        {slot.horario_inicio} - {slot.horario_fim}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {patients.length > 0 && selectedTimeSlot > 0 && (
-              <div>
-                <Label>Paciente</Label>
-                <Select
-                  onValueChange={(value) => setSelectedPatient(value)}
-                  value={selectedPatient}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um paciente" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {patients.map((patient: any) => (
-                      <SelectItem key={patient.id} value={patient.id.toString()}>
-                        {patient.nome} {patient.sobrenome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {paymentMethods.length > 0 && selectedPatient.length > 0 && (
-              <div>
-                <Label>Método de pagamento</Label>
-                <Select
-                  onValueChange={(value) => setSelectedPaymentMethod(parseInt(value))}
-                  value={selectedPaymentMethod.toString()}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um método de pagamento" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {paymentMethods.map((paymentMethod) => (
-                      <SelectItem key={paymentMethod.id} value={paymentMethod.id.toString()}>
-                        {paymentMethod.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <Button 
-              onClick={handleScheduleAppointment} 
-              className="w-full"
-              disabled={selectedUnit === 0 || selectedDate === undefined || selectedTimeSlot === 0 || selectedPatient === '' || selectedPaymentMethod === 0}
-            > 
-              <CirclePlus className="w-4 h-4 mr-2" /> Agendar Consulta
-            </Button>
+            <div className="bg-white rounded-lg border shadow-sm">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Paciente</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Horário</TableHead>
+                    <TableHead>Unidade</TableHead>
+                    <TableHead>Vacina</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAppointments.map((appointment) => (
+                    <TableRow key={appointment.id}>
+                      <TableCell className="font-medium">{appointment.patient_name}</TableCell>
+                      <TableCell>{format(appointment.scheduled_date, 'dd/MM/yyyy')}</TableCell>
+                      <TableCell>{appointment.time_slot}</TableCell>
+                      <TableCell>{appointment.unit_name}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {appointment.vaccines.map((vaccine, index) => (
+                            <div key={index} className="text-sm">
+                              {vaccine.nome}
+                            </div>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell>R$ {appointment.valor_total.toFixed(2)}</TableCell>
+                      <TableCell>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium
+                          ${appointment.status === 'Agendado' ? 'bg-blue-100 text-blue-700' : 
+                            appointment.status === 'Concluído' ? 'bg-green-100 text-green-700' : 
+                            'bg-red-100 text-red-700'}`
+                        }>
+                          {appointment.status}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="outline" size="sm">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="appointments">
-          <div className="space-y-4">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Paciente</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Horário</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {appointments.map((appointment) => (
-                  <TableRow key={appointment.id}>
-                    <TableCell>
-                      {patients.find(p => p.id === appointment.patient_id)?.name || appointment.patient_id}
-                    </TableCell>
-                    <TableCell>{format(new Date(appointment.scheduled_date), 'dd/MM/yyyy')}</TableCell>
-                    <TableCell>{appointment.time_slot}</TableCell>
-                    <TableCell>{appointment.status}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+        <TabsContent value="calendar">
+          <div className="bg-white p-6 rounded-lg border shadow-sm">
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              onSelect={(date) => {
+                if (date) {
+                  setSelectedDate(date)
+                  setActiveTab("new")
+                }
+              }}
+              locale={ptBR}
+              className="w-full"
+              components={{
+                IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
+                IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
+                Day: ({ date, displayMonth, ...props }) => {
+                  const formattedDate = format(date, 'yyyy-MM-dd')
+                  const appointments = appointmentsByDay[formattedDate] || []
+                  
+                  return (
+                    <div 
+                      className="h-32 w-full border p-1 relative cursor-pointer hover:bg-gray-50"
+                      onClick={() => {
+                        setSelectedDate(date)
+                        setActiveTab("new")
+                      }}
+                    >
+                      <div className="absolute top-1 left-1 text-sm">
+                        {format(date, 'd')}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      <div className="mt-6 space-y-1">
+                        {appointments.map(appointment => (
+                          <div 
+                            key={appointment.id} 
+                            className="text-xs p-1 rounded-sm mx-1"
+                            style={{
+                              backgroundColor: appointment.status === 'Pendente' ? '#fee2e2' : '#dcfce7'
+                            }}
+                          >
+                            <div className="text-[10px] text-gray-500">{appointment.unit_name}</div>
+                            {appointment.time_slot} - {appointment.patient_name}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                }
+              }}
+              classNames={{
+                months: "w-full",
+                month: "w-full",
+                caption: "flex justify-between p-2 mb-4",
+                caption_label: "text-sm font-medium",
+                nav: "flex items-center gap-1",
+                nav_button: "h-7 w-7 bg-transparent p-0 hover:bg-gray-100 rounded-full flex items-center justify-center",
+                table: "w-full border-collapse",
+                head_row: "flex w-full",
+                head_cell: "text-muted-foreground w-full font-normal text-[0.8rem] h-10 border-b border p-2",
+                row: "flex w-full",
+                cell: "w-full text-center text-sm relative p-0",
+                day: "w-full h-full",
+                day_today: "bg-accent/5",
+                day_outside: "opacity-50",
+                day_disabled: "opacity-50",
+                day_hidden: "invisible",
+              }}
+            />
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog 
+        open={activeTab === "new"} 
+        onOpenChange={(open) => !open && setActiveTab("list")}
+      >
+        <DialogContent className="max-w-[90%] w-[1200px] h-[80vh] max-h-[800px] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Novo Agendamento</DialogTitle>
+          </DialogHeader>
+          
+          <div className="grid md:grid-cols-2 gap-6 px-4">
+            {/* Lado esquerdo - Formulário */}
+            <div className="space-y-4">
+              <div className="bg-white rounded-lg border shadow-sm">
+                <div className="p-4 border-b">
+                  <h3 className="text-lg font-semibold">Informações Básicas</h3>
+                </div>
+                
+                <div className="p-4 space-y-4">
+                  <div>
+                    <Label htmlFor="unit">Unidade</Label>
+                    <Select 
+                      onValueChange={(value) => setSelectedUnit(parseInt(value))}
+                      value={selectedUnit.toString()}
+                    >
+                      <SelectTrigger id="unit">
+                        <SelectValue placeholder="Selecione uma unidade" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {units.map((unit) => (
+                          <SelectItem key={unit.id} value={unit.id.toString()}>
+                            {unit.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedUnit > 0 && (
+                    <div className="w-full">
+                      <Label>Data</Label>
+                      <div className="border rounded-md p-3 flex justify-center">
+                        <Calendar
+                          mode="single"
+                          selected={selectedDate}
+                          onSelect={(date) => {
+                            if (date) {
+                              setSelectedDate(date)
+                              fetchAvailableTimeSlots(selectedUnit, date)
+                            }
+                          }}
+                          locale={ptBR}
+                          className="w-full max-w-[400px]"
+                          components={{
+                            IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
+                            IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
+                          }}
+                          modifiers={{
+                            hasAppointment: (date) => {
+                              const day = format(date, 'yyyy-MM-dd')
+                              return !!appointmentsByDay[day]?.length
+                            }
+                          }}
+                          modifiersStyles={{
+                            hasAppointment: {
+                              color: 'white',
+                              backgroundColor: '#0ea5e9'
+                            }
+                          }}
+                          footer={selectedDate && appointmentsByDay[format(selectedDate, 'yyyy-MM-dd')]?.length > 0 && (
+                            <div className="mt-3 border-t pt-3">
+                              <h4 className="text-sm font-medium mb-2">Vacinas Agendadas:</h4>
+                              <div className="space-y-2">
+                                {appointmentsByDay[format(selectedDate, 'yyyy-MM-dd')]?.map(appointment => (
+                                  <div key={appointment.id} className="flex items-center justify-between text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                      <span>{appointment.time_slot}</span>
+                                      <span>-</span>
+                                      <span>{appointment.vaccines.map(v => v.nome).join(', ')}</span>
+                                    </div>
+                                    <span className="text-gray-500">{appointment.patient_name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {selectedUnit > 0 && selectedDate && (
+                <div className="bg-white p-6 rounded-lg border shadow-sm">
+                  <h3 className="text-lg font-semibold mb-4">Horário e Pagamento</h3>
+                  
+                  <div className="space-y-4">
+                    {availableTimeSlots.length > 0 ? (
+                      <div>
+                        <Label>Horário Disponível</Label>
+                        <Select
+                          onValueChange={(value) => setSelectedTimeSlot(parseInt(value))}
+                          value={selectedTimeSlot.toString()}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione um horário" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableTimeSlots.map((slot) => (
+                              <SelectItem key={slot.id} value={slot.id.toString()}>
+                                {slot.horario_inicio} - {slot.horario_fim}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <div className="text-center py-4">
+                        <p className="text-gray-500">Nenhum horário de atendimento para esse dia da semana</p>
+                      </div>
+                    )}
+
+                    {selectedTimeSlot > 0 && (
+                      <>
+                        <div>
+                          <Label>Paciente</Label>
+                          <Select
+                            onValueChange={setSelectedPatient}
+                            value={selectedPatient}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione um paciente" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {patients.map((patient) => (
+                                <SelectItem key={patient.id} value={patient.id}>
+                                  {patient.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label>Forma de Pagamento</Label>
+                    <Select 
+                            onValueChange={(value) => setSelectedPaymentMethod(parseInt(value))}
+                            value={selectedPaymentMethod.toString()}
+                    >
+                            <SelectTrigger>
+                        <SelectValue placeholder="Selecione a forma de pagamento" />
+                      </SelectTrigger>
+                      <SelectContent>
+                              {paymentMethods.map((method) => (
+                                <SelectItem key={method.id} value={method.id.toString()}>
+                                  {method.nome}
+                                </SelectItem>
+                              ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                        {selectedPaymentMethod > 0 && (
+                          <div>
+                            <Label>Vacinas</Label>
+                            <div className="space-y-4">
+                              {/* Lista de vacinas selecionadas */}
+                              {selectedVaccines.map(({ vaccineId, dose }) => {
+                                const vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
+                                return (
+                                  <div key={vaccineId} className="flex items-center justify-between p-2 border rounded">
+                                    <span>{vaccine?.nome} - {dose}ª Dose</span>
+                <Button
+                                      variant="ghost" 
+                  size="sm"
+                                      onClick={() => setSelectedVaccines(prev => prev.filter(v => v.vaccineId !== vaccineId))}
+                >
+                                      <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+                                )
+                              })}
+
+                              {/* Adicionar nova vacina */}
+                              <div className="flex gap-2">
+                                <Select
+                                  value={selectedVaccineId}
+                                  onValueChange={(value) => {
+                                    setSelectedVaccineId(value)
+                                    setSelectedDose(0) // Reseta a dose quando muda a vacina
+                                  }}
+                                >
+                                  <SelectTrigger className="w-[300px]">
+                                    <SelectValue placeholder="Selecione uma vacina" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {vaccines
+                                      .filter(v => !selectedVaccines.some(sv => sv.vaccineId === v.ref_vacinasID))
+                                      .map((vaccine) => (
+                                        <SelectItem key={vaccine.ref_vacinasID} value={vaccine.ref_vacinasID.toString()}>
+                                          {vaccine.nome}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+
+                                {selectedVaccineId && (
+                                  <Select
+                                    value={selectedDose.toString()}
+                                    onValueChange={(value) => setSelectedDose(parseInt(value))}
+                                  >
+                                    <SelectTrigger className="w-[120px]">
+                                      <SelectValue placeholder="Dose" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {[1, 2, 3, 4, 5].map(dose => {
+                                        const vaccine = vaccines.find(v => v.ref_vacinasID === parseInt(selectedVaccineId))
+                                        if (!vaccine?.esquema) return null
+                                        
+                                        const doseKey = `dose_${dose}` as keyof typeof vaccine.esquema
+                                        if (vaccine.esquema[doseKey]) {
+                                          return (
+                                            <SelectItem key={dose} value={dose.toString()}>
+                                              {dose}ª Dose
+                                            </SelectItem>
+                                          )
+                                        }
+                                        return null
+                                      }).filter(Boolean)}
+                                    </SelectContent>
+                                  </Select>
+                                )}
+
+                <Button
+                                  variant="outline"
+                                  onClick={() => {
+                                    if (selectedVaccineId && selectedDose > 0) {
+                                      setSelectedVaccines(prev => [
+                                        ...prev, 
+                                        { 
+                                          vaccineId: parseInt(selectedVaccineId), 
+                                          dose: selectedDose 
+                                        }
+                                      ])
+                                      setSelectedVaccineId('') // Limpa a seleção da vacina
+                                      setSelectedDose(0) // Limpa a seleção da dose
+                                    }
+                                  }}
+                                  disabled={!selectedVaccineId || selectedDose === 0}
+                                >
+                                  <CirclePlus className="h-4 w-4 mr-2" />
+                                  Adicionar Vacina
+                </Button>
+              </div>
+            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <Button 
+                onClick={handleScheduleAppointment} 
+                className="w-full"
+                disabled={!selectedUnit || !selectedDate || !selectedTimeSlot || !selectedPatient || !selectedPaymentMethod}
+              > 
+                <CirclePlus className="w-4 h-4 mr-2" /> Confirmar Agendamento
+                      </Button>
+            </div>
+
+            {/* Lado direito - Resumo */}
+            <div className="bg-gray-50 rounded-lg border h-fit sticky top-0">
+              <div className="p-4 border-b">
+                <h3 className="text-lg font-semibold">Resumo do Agendamento</h3>
+              </div>
+              
+              <div className="p-4 space-y-4">
+                <div>
+                  <span className="text-sm text-gray-500">Unidade</span>
+                  <p className="font-medium">{units.find(u => u.id === selectedUnit)?.nome || '-'}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">Data</span>
+                  <p className="font-medium">
+                    {selectedDate ? format(selectedDate, 'dd/MM/yyyy') : '-'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">Horário</span>
+                  <p className="font-medium">
+                    {availableTimeSlots.find(s => s.id === selectedTimeSlot)?.horario_inicio || '-'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">Paciente</span>
+                  <p className="font-medium">
+                    {patients.find(p => p.id === selectedPatient)?.name || '-'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">Forma de Pagamento</span>
+                  <p className="font-medium">
+                    {paymentMethods.find(m => m.id === selectedPaymentMethod)?.nome || '-'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-500">Vacinas Selecionadas</span>
+                  <div className="space-y-1">
+                    {selectedVaccines.map(({ vaccineId, dose }) => {
+                      const vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
+                      return (
+                        <div key={vaccineId} className="flex justify-between">
+                          <p className="font-medium">
+                            {vaccine?.nome} - {dose}ª Dose
+                          </p>
+                          <p className="text-gray-600">
+                            R$ {vaccine?.preco.toFixed(2)}
+                          </p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {selectedVaccines.length > 0 && (
+                    <div className="mt-2 pt-2 border-t flex justify-between">
+                      <span className="font-semibold">Total:</span>
+                      <span className="font-semibold text-green-600">
+                        R$ {totalValue.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
