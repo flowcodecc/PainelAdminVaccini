@@ -27,6 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { UnitDialog } from "@/components/dialogs/UnitDialog"
 
 interface UnitsTabProps {
   currentUser: User
@@ -84,12 +85,19 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
   }, [selectedUnit])
 
   const fetchUnits = async () => {
-    const { data } = await supabase
+    console.log('Buscando unidades...')
+    const { data, error } = await supabase
       .from('unidade')
       .select('*')
       .order('id')
     
+    if (error) {
+      console.error('Erro ao buscar unidades:', error)
+      return
+    }
+    
     if (data) {
+      console.log('Unidades encontradas:', data)
       setUnits(data)
     }
   }
@@ -363,207 +371,13 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
             </TabsContent>
           </Tabs>
 
-          <Dialog 
-            open={isDialogOpen} 
-            onOpenChange={(open) => {
-              setIsDialogOpen(open)
-              if (!open) {
-                setSelectedUnit(null)
-                resetForm()
-              }
-            }}
-          >
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>{selectedUnit ? 'Editar Unidade' : 'Nova Unidade'}</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="nome">Nome</Label>
-                    <Input
-                      id="nome"
-                      value={formData.nome}
-                      onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="nome_interno">Nome Interno</Label>
-                    <Input
-                      id="nome_interno"
-                      value={formData.nome_interno}
-                      onChange={(e) => setFormData(prev => ({ ...prev, nome_interno: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="telefone">Telefone</Label>
-                    <Input
-                      id="telefone"
-                      value={formData.telefone}
-                      onChange={(e) => {
-                        const formatted = formatPhone(e.target.value)
-                        setFormData(prev => ({ ...prev, telefone: formatted }))
-                      }}
-                      maxLength={15}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="cep">CEP</Label>
-                    <Input
-                      id="cep"
-                      value={formData.cep}
-                      onChange={(e) => {
-                        const formatted = formatCep(e.target.value)
-                        setFormData(prev => ({ ...prev, cep: formatted }))
-                      }}
-                      onBlur={(e) => fetchAddressByCep(e.target.value)}
-                      maxLength={9}
-                      placeholder="00000-000"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="logradouro">Logradouro</Label>
-                    <Input
-                      id="logradouro"
-                      value={formData.logradouro}
-                      onChange={(e) => setFormData(prev => ({ ...prev, logradouro: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="numero">Número</Label>
-                    <Input
-                      id="numero"
-                      value={formData.numero}
-                      onChange={(e) => setFormData(prev => ({ ...prev, numero: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="complemento">Complemento</Label>
-                    <Input
-                      id="complemento"
-                      value={formData.complemento}
-                      onChange={(e) => setFormData(prev => ({ ...prev, complemento: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="bairro">Bairro</Label>
-                    <Input
-                      id="bairro"
-                      value={formData.bairro}
-                      onChange={(e) => setFormData(prev => ({ ...prev, bairro: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="cidade">Cidade</Label>
-                    <Input
-                      id="cidade"
-                      value={formData.cidade}
-                      onChange={(e) => setFormData(prev => ({ ...prev, cidade: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="estado">Estado</Label>
-                    <Input
-                      id="estado"
-                      value={formData.estado}
-                      onChange={(e) => setFormData(prev => ({ ...prev, estado: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="qtd_agendamento_por_faixa">Agendamentos por Faixa</Label>
-                    <Input
-                      id="qtd_agendamento_por_faixa"
-                      type="number"
-                      min="0"
-                      placeholder="Ex: 10"
-                      value={formData.qtd_agendamento_por_faixa}
-                      onChange={(e) => setFormData(prev => ({ 
-                        ...prev, 
-                        qtd_agendamento_por_faixa: parseInt(e.target.value) || 0 
-                      }))}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="qtd_vacinas_por_faixa">Vacinas por Faixa</Label>
-                    <Input
-                      id="qtd_vacinas_por_faixa"
-                      type="number"
-                      min="0"
-                      placeholder="Ex: 20"
-                      value={formData.qtd_vacinas_por_faixa}
-                      onChange={(e) => setFormData(prev => ({ 
-                        ...prev, 
-                        qtd_vacinas_por_faixa: parseInt(e.target.value) || 0 
-                      }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="status"
-                      checked={formData.status}
-                      onCheckedChange={(checked) => 
-                        setFormData(prev => ({ ...prev, status: checked as boolean }))
-                      }
-                    />
-                    <Label htmlFor="status">Ativo</Label>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="atende_aplicativo"
-                      checked={formData.atende_aplicativo}
-                      onCheckedChange={(checked) => 
-                        setFormData(prev => ({ ...prev, atende_aplicativo: checked as boolean }))
-                      }
-                    />
-                    <Label htmlFor="atende_aplicativo">Atende Aplicativo</Label>
-      </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="mostra_precos_unidades"
-                      checked={formData.mostra_precos_unidades}
-                      onCheckedChange={(checked) => 
-                        setFormData(prev => ({ ...prev, mostra_precos_unidades: checked as boolean }))
-                      }
-                    />
-                    <Label htmlFor="mostra_precos_unidades">Mostra Preços Unidades</Label>
-                  </div>
-                </div>
-
-                <div className="flex justify-end space-x-2">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button type="submit">
-                    {selectedUnit ? 'Salvar Alterações' : 'Criar Unidade'}
-                  </Button>
-    </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <UnitDialog 
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
+            unit={selectedUnit}
+            onSuccess={fetchUnits}
+            healthPlans={[]}
+          />
 
           <ScheduleDialog
             open={isScheduleDialogOpen}

@@ -52,6 +52,8 @@ export interface Unit {
   mostra_precos_unidades: boolean
   qtd_agendamento_por_faixa?: number
   qtd_vacinas_por_faixa?: number
+  cep_ranges?: { cep_start: string; cep_end: string; id: string }[]
+  blocked_ceps?: string[]
 }
 
 export interface Patient {
