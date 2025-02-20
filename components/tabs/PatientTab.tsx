@@ -34,6 +34,7 @@ interface Patient {
   units: string[] | null
   user_role_id: number | null
   is_active: boolean
+  cep: string | null
 }
 
 export function PatientTab() {
@@ -58,7 +59,8 @@ export function PatientTab() {
     celular: '',
     units: [],
     user_role_id: null,
-    is_active: true
+    is_active: true,
+    cep: '',
   })
   const [showPassword, setShowPassword] = useState(false)
   const [activeTab, setActiveTab] = useState("list")
@@ -95,7 +97,11 @@ export function PatientTab() {
     e.preventDefault()
     try {
       if (selectedPatient) {
-        // Atualizar paciente existente - apenas campos editáveis
+        // Atualizar paciente existente - validar apenas nome
+        if (!formData.nome) {
+          throw new Error('Nome é obrigatório')
+        }
+
         const editableFields = {
           nome: formData.nome,
           sobrenome: formData.sobrenome,
@@ -108,7 +114,8 @@ export function PatientTab() {
           nascimento: formData.nascimento,
           complemento: formData.complemento,
           celular: formData.celular,
-          is_active: formData.is_active
+          is_active: formData.is_active,
+          cep: formData.cep
         }
 
         const { error } = await supabase
@@ -123,12 +130,11 @@ export function PatientTab() {
           description: "Paciente atualizado com sucesso"
         })
 
-        // Fechar o dialog e atualizar a lista
         setEditDialogOpen(false)
         resetForm()
         fetchPatients()
       } else {
-        // Validar campos obrigatórios
+        // Criar novo paciente - validar todos os campos obrigatórios
         if (!formData.email || !formData.senha || !formData.nome) {
           throw new Error('Nome, email e senha são obrigatórios')
         }
@@ -144,7 +150,7 @@ export function PatientTab() {
           throw new Error('Este email já está cadastrado')
         }
 
-        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = não encontrado
+        if (checkError && checkError.code !== 'PGRST116') {
           throw checkError
         }
 
@@ -165,7 +171,7 @@ export function PatientTab() {
           throw new Error('Erro ao criar usuário no Auth')
         }
 
-        // 2. Criar usuário na tabela user
+        // 2. Criar usuário na tabela user com CEP
         const { senha, ...userData } = formData
         const { error: userError } = await supabase
           .from('user')
@@ -173,11 +179,11 @@ export function PatientTab() {
             ...userData,
             id: authData.user.id,
             user_role_id: null,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            cep: formData.cep
           })
 
         if (userError) {
-          // Se falhar ao criar na tabela user, tentar deletar do Auth
           await supabase.auth.admin.deleteUser(authData.user.id)
           throw userError
         }
@@ -193,7 +199,7 @@ export function PatientTab() {
       }
     } catch (error: any) {
       console.error('Erro completo:', error)
-    toast({
+      toast({
         title: "Erro",
         description: error.message || "Erro ao salvar paciente"
       })
@@ -241,7 +247,8 @@ export function PatientTab() {
       celular: '',
       units: [],
       user_role_id: null,
-      is_active: true
+      is_active: true,
+      cep: '',
     })
     setSelectedPatient(null)
   }
@@ -261,6 +268,78 @@ export function PatientTab() {
     }
   }
 
+  // Adicionar a função de formatação de CEP
+  const formatCep = (value: string) => {
+    const cleaned = value.replace(/\D/g, '')
+    let formatted = cleaned
+
+    if (cleaned.length > 5) {
+      formatted = `${cleaned.slice(0, 5)}-${cleaned.slice(5, 8)}`
+    }
+
+    return formatted
+  }
+
+  // Adicionar a função de busca de endereço
+  const fetchAddressByCep = async (cep: string) => {
+    const cleanCep = cep.replace(/\D/g, '')
+    
+    if (cleanCep.length !== 8) {
+      toast({
+        title: "Erro",
+        description: "CEP deve ter 8 dígitos"
+      })
+      return
+    }
+
+    try {
+      toast({
+        title: "Buscando...",
+        description: "Consultando endereço"
+      })
+
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`)
+      const data = await response.json()
+
+      console.log('Resposta da API:', data) // Debug
+
+      if (data.erro) {
+        toast({
+          title: "Erro",
+          description: "CEP não encontrado"
+        })
+        return
+      }
+
+      // Garantir que todos os campos sejam atualizados
+      const updatedFormData = {
+        ...formData,
+        logradouro: data.logradouro || '',
+        bairro: data.bairro || '',
+        cidade: data.localidade || '',
+        estado: data.uf || '',
+        cep: cleanCep,
+        numero: formData.numero || '', // Mantém o número se existir
+        complemento: formData.complemento || '' // Mantém o complemento se existir
+      }
+
+      console.log('Dados atualizados:', updatedFormData) // Debug
+      setFormData(updatedFormData)
+
+      toast({
+        title: "Sucesso",
+        description: "Endereço encontrado e preenchido automaticamente"
+      })
+
+    } catch (error) {
+      console.error('Erro ao buscar CEP:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao buscar endereço"
+      })
+    }
+  }
+
   return (
     <Card className="w-full">
       <CardHeader className="border-b bg-gray-50/50">
@@ -268,27 +347,16 @@ export function PatientTab() {
           <CardTitle className="text-2xl font-bold text-gray-800">
             Gerenciamento de Pacientes
           </CardTitle>
+          <Button 
+            onClick={() => setActiveTab("add")}
+            className="bg-[#0AB2B3] hover:bg-[#099999] text-white"
+          >
+            Adicionar Paciente
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="p-6">
-        <Tabs defaultValue="list" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <div className="flex items-center justify-between">
-            <TabsList className="grid w-[400px] grid-cols-2 bg-gray-100 p-1 rounded-lg">
-              <TabsTrigger 
-                value="list" 
-                className="data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm"
-              >
-                Lista de Pacientes
-              </TabsTrigger>
-              <TabsTrigger 
-                value="add"
-                className="data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm"
-              >
-                Adicionar Paciente
-              </TabsTrigger>
-          </TabsList>
-          </div>
-
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsContent value="list">
             <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
               <Table>
@@ -312,7 +380,7 @@ export function PatientTab() {
                       <TableCell>{patient.celular || '-'}</TableCell>
                       <TableCell>
                         {patient.logradouro 
-                          ? `${patient.logradouro}, ${patient.numero || 'S/N'}${patient.complemento ? `, ${patient.complemento}` : ''} - ${patient.bairro || ''} - ${patient.cidade || ''} - ${patient.estado || ''}`
+                          ? `${patient.logradouro}, ${patient.numero || 'S/N'}${patient.complemento ? `, ${patient.complemento}` : ''} - ${patient.bairro || ''} - ${patient.cidade || ''} - ${patient.estado || ''} - CEP: ${patient.cep || ''}`
                           : '-'
                         }
                       </TableCell>
@@ -364,7 +432,7 @@ export function PatientTab() {
                 </TableBody>
               </Table>
             </div>
-</TabsContent>
+          </TabsContent>
 
           <TabsContent value="add">
             <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
@@ -444,6 +512,34 @@ export function PatientTab() {
                     <h3 className="text-lg font-semibold text-gray-800 mb-4">Endereço</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
+                        <Label htmlFor="cep">CEP</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="cep"
+                            value={formatCep(formData.cep || '')}
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/\D/g, '')
+                              setFormData({ ...formData, cep: value })
+                              if (value.length === 8) {
+                                fetchAddressByCep(value)
+                              }
+                            }}
+                            maxLength={9}
+                            placeholder="00000-000"
+                            className="flex-1"
+                          />
+                          <Button 
+                            type="button"
+                            className="bg-[#0AB2B3] hover:bg-[#099999] text-white"
+                            onClick={() => fetchAddressByCep(formData.cep || '')}
+                            disabled={!formData.cep || formData.cep.length !== 8}
+                          >
+                            Buscar
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div>
                         <Label htmlFor="logradouro">Logradouro</Label>
                         <Input
                           id="logradouro"
@@ -470,7 +566,7 @@ export function PatientTab() {
                         />
                       </div>
 
-                      <div>
+                    <div>
                         <Label htmlFor="bairro">Bairro</Label>
                         <Input
                           id="bairro"
@@ -551,19 +647,20 @@ export function PatientTab() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end space-x-4 pt-6 border-t">
+                <div className="flex justify-end space-x-2">
                   <Button 
                     type="button" 
-                    variant="outline"
+                    variant="outline" 
                     onClick={handleCancel}
+                    className="border-[#0AB2B3] text-[#0AB2B3] hover:bg-[#0AB2B3]/10"
                   >
                     Cancelar
                   </Button>
                   <Button 
                     type="submit"
-                    className="bg-blue-600 hover:bg-blue-700"
+                    className="bg-[#0AB2B3] hover:bg-[#099999] text-white"
                   >
-                    {selectedPatient ? 'Atualizar Paciente' : 'Cadastrar Paciente'}
+                    {selectedPatient ? 'Salvar Alterações' : 'Cadastrar Paciente'}
                   </Button>
                 </div>
                 </form>
@@ -656,7 +753,35 @@ export function PatientTab() {
                   </div>
                 </div>
 
-                <div className="col-span-2">
+                <div>
+                  <Label htmlFor="cep">CEP</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="cep"
+                      value={formatCep(formData.cep || '')}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '')
+                        setFormData({ ...formData, cep: value })
+                        if (value.length === 8) {
+                          fetchAddressByCep(value)
+                        }
+                      }}
+                      maxLength={9}
+                      placeholder="00000-000"
+                      className="flex-1"
+                    />
+                    <Button 
+                      type="button"
+                      className="bg-[#0AB2B3] hover:bg-[#099999] text-white"
+                      onClick={() => fetchAddressByCep(formData.cep || '')}
+                      disabled={!formData.cep || formData.cep.length !== 8}
+                    >
+                      Buscar
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
                   <Label htmlFor="logradouro">Logradouro</Label>
                   <Input
                     id="logradouro"
@@ -717,8 +842,8 @@ export function PatientTab() {
                     onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked as boolean })}
                   />
                   <Label htmlFor="is_active">Ativo</Label>
-          </div>
-        </div>
+                </div>
+              </div>
 
               <div className="flex justify-end space-x-2">
                 <Button type="button" variant="outline" onClick={() => {

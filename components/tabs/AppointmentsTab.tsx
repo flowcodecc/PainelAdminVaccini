@@ -16,6 +16,13 @@ import { Unit, Patient, Appointment, UnitSchedule, Vaccine } from '@/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
+interface UnidadeAtende {
+  "unidade_id (FK)": number;
+  unidade: {
+    nome: string;
+  };
+}
+
 export function AppointmentsTab() {
   const [units, setUnits] = useState<Unit[]>([])
   const [patients, setPatients] = useState<Patient[]>([])
@@ -263,6 +270,66 @@ export function AppointmentsTab() {
     }
   }
 
+  // Adicionar função para validar CEP
+  const validatePatientCep = async (patientId: string, unitId: number) => {
+    try {
+      // Buscar CEP do paciente
+      const { data: patient, error: patientError } = await supabase
+        .from('user')
+        .select('cep, nome')
+        .eq('id', patientId)
+        .single()
+
+      if (patientError || !patient?.cep) {
+        toast({
+          title: "Erro",
+          description: "Paciente não possui CEP cadastrado"
+        })
+        return false
+      }
+
+      const patientCep = patient.cep.replace(/\D/g, '')
+
+      // Buscar faixas de CEP da unidade
+      const { data: ranges, error: rangesError } = await supabase
+        .from('unidade_ceps_atende')
+        .select('cep_inicial, cep_final')
+        .eq('"unidade_id (FK)"', unitId)
+
+      if (rangesError) {
+        toast({
+          title: "Erro",
+          description: "Erro ao verificar faixas de CEP da unidade"
+        })
+        return false
+      }
+
+      // Verificar se o CEP está em alguma faixa
+      const isInRange = ranges.some(range => {
+        const start = range.cep_inicial.replace(/\D/g, '')
+        const end = range.cep_final.replace(/\D/g, '')
+        return parseInt(patientCep) >= parseInt(start) && parseInt(patientCep) <= parseInt(end)
+      })
+
+      if (!isInRange) {
+        toast({
+          title: "Aviso",
+          description: `O CEP ${patient.cep} não é atendido por esta unidade.`
+        })
+        return false
+      }
+
+      return true
+    } catch (error) {
+      console.error('Erro ao validar CEP:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao validar CEP do paciente"
+      })
+      return false
+    }
+  }
+
   useEffect(() => {
     fetchUnits()
     fetchPatients()
@@ -290,6 +357,7 @@ export function AppointmentsTab() {
 
   const handleScheduleAppointment = async () => {
     try {
+      // Validação dos campos obrigatórios
       if (!selectedUnit || !selectedDate || !selectedTimeSlot || !selectedPatient || !selectedPaymentMethod || selectedVaccines.length === 0) {
         toast({
           title: "Erro",
@@ -298,9 +366,15 @@ export function AppointmentsTab() {
         return
       }
 
+      // Mostrar toast de loading
+      toast({
+        title: "Processando",
+        description: "Realizando agendamento..."
+      })
+
       const timeSlot = availableTimeSlots.find(s => s.id === selectedTimeSlot)
       
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('agendamento')
         .insert({
           user_id: selectedPatient,
@@ -309,18 +383,20 @@ export function AppointmentsTab() {
           forma_pagamento_id: selectedPaymentMethod,
           valor_total: totalValue,
           horario: timeSlot?.horario_inicio,
-          dia: selectedDate,
-          status: 1,
+          dia: selectedDate.toISOString().split('T')[0], // Formatar data corretamente
           status_id: 1
         })
+        .select()
+        .single()
 
       if (error) throw error
 
       // Recarregar dados
       await fetchAppointments()
 
+      // Mostrar sucesso
       toast({
-        title: "Sucesso",
+        title: "Sucesso!",
         description: "Agendamento realizado com sucesso!"
       })
 
@@ -334,7 +410,7 @@ export function AppointmentsTab() {
       setActiveTab('list') // Volta para a lista
 
     } catch (error) {
-      console.error('Erro:', error)
+      console.error('Erro ao realizar agendamento:', error)
       toast({
         title: "Erro",
         description: "Erro ao realizar agendamento. Tente novamente."
@@ -538,66 +614,16 @@ export function AppointmentsTab() {
               mode="single"
               selected={selectedDate}
               onSelect={(date) => {
-                if (date) {
+                if (date && selectedUnit) {
                   setSelectedDate(date)
-                  setActiveTab("new")
+                  fetchAvailableTimeSlots(selectedUnit, date)
                 }
               }}
               locale={ptBR}
-              className="w-full"
+              className="w-full max-w-[400px]"
               components={{
                 IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
                 IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
-                Day: ({ date, displayMonth, ...props }) => {
-                  const formattedDate = format(date, 'yyyy-MM-dd')
-                  const appointments = appointmentsByDay[formattedDate] || []
-                  
-                  return (
-                    <div 
-                      className="h-32 w-full border p-1 relative cursor-pointer hover:bg-gray-50"
-                      onClick={() => {
-                        setSelectedDate(date)
-                        setActiveTab("new")
-                      }}
-                    >
-                      <div className="absolute top-1 left-1 text-sm">
-                        {format(date, 'd')}
-                      </div>
-                      <div className="mt-6 space-y-1">
-                        {appointments.map(appointment => (
-                          <div 
-                            key={appointment.id} 
-                            className="text-xs p-1 rounded-sm mx-1"
-                            style={{
-                              backgroundColor: appointment.status === 'Pendente' ? '#fee2e2' : '#dcfce7'
-                            }}
-                          >
-                            <div className="text-[10px] text-gray-500">{appointment.unit_name}</div>
-                            {appointment.time_slot} - {appointment.patient_name}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                }
-              }}
-              classNames={{
-                months: "w-full",
-                month: "w-full",
-                caption: "flex justify-between p-2 mb-4",
-                caption_label: "text-sm font-medium",
-                nav: "flex items-center gap-1",
-                nav_button: "h-7 w-7 bg-transparent p-0 hover:bg-gray-100 rounded-full flex items-center justify-center",
-                table: "w-full border-collapse",
-                head_row: "flex w-full",
-                head_cell: "text-muted-foreground w-full font-normal text-[0.8rem] h-10 border-b border p-2",
-                row: "flex w-full",
-                cell: "w-full text-center text-sm relative p-0",
-                day: "w-full h-full",
-                day_today: "bg-accent/5",
-                day_outside: "opacity-50",
-                day_disabled: "opacity-50",
-                day_hidden: "invisible",
               }}
             />
           </div>
@@ -660,36 +686,6 @@ export function AppointmentsTab() {
                             IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
                             IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
                           }}
-                          modifiers={{
-                            hasAppointment: (date) => {
-                              const day = format(date, 'yyyy-MM-dd')
-                              return !!appointmentsByDay[day]?.length
-                            }
-                          }}
-                          modifiersStyles={{
-                            hasAppointment: {
-                              color: 'white',
-                              backgroundColor: '#0ea5e9'
-                            }
-                          }}
-                          footer={selectedDate && appointmentsByDay[format(selectedDate, 'yyyy-MM-dd')]?.length > 0 && (
-                            <div className="mt-3 border-t pt-3">
-                              <h4 className="text-sm font-medium mb-2">Vacinas Agendadas:</h4>
-                              <div className="space-y-2">
-                                {appointmentsByDay[format(selectedDate, 'yyyy-MM-dd')]?.map(appointment => (
-                                  <div key={appointment.id} className="flex items-center justify-between text-sm">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-2 h-2 rounded-full bg-blue-500" />
-                                      <span>{appointment.time_slot}</span>
-                                      <span>-</span>
-                                      <span>{appointment.vaccines.map(v => v.nome).join(', ')}</span>
-                                    </div>
-                                    <span className="text-gray-500">{appointment.patient_name}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
                         />
                       </div>
                     </div>
@@ -732,7 +728,46 @@ export function AppointmentsTab() {
                         <div>
                           <Label>Paciente</Label>
                           <Select
-                            onValueChange={setSelectedPatient}
+                            onValueChange={async (value) => {
+                              // Primeiro seleciona o paciente
+                              setSelectedPatient(value)
+
+                              // Depois valida o CEP
+                              const { data: patient, error } = await supabase
+                                .from('user')
+                                .select('cep, nome')
+                                .eq('id', value)
+                                .single()
+
+                              if (error || !patient?.cep) {
+                                toast({
+                                  title: "Aviso",
+                                  description: "Paciente não possui CEP cadastrado"
+                                })
+                                return
+                              }
+
+                              // Buscar faixas de CEP da unidade
+                              const { data: ranges } = await supabase
+                                .from('unidade_ceps_atende')
+                                .select('cep_inicial, cep_final')
+                                .eq('"unidade_id (FK)"', selectedUnit)
+
+                              // Verificar se o CEP está em alguma faixa
+                              const patientCep = patient.cep.replace(/\D/g, '')
+                              const isInRange = ranges?.some(range => {
+                                const start = range.cep_inicial.replace(/\D/g, '')
+                                const end = range.cep_final.replace(/\D/g, '')
+                                return parseInt(patientCep) >= parseInt(start) && parseInt(patientCep) <= parseInt(end)
+                              })
+
+                              if (!isInRange) {
+                                toast({
+                                  title: "Aviso",
+                                  description: `O paciente ${patient.nome} possui CEP ${patient.cep} que não é atendido por esta unidade.`
+                                })
+                              }
+                            }}
                             value={selectedPatient}
                           >
                             <SelectTrigger>
