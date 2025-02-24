@@ -274,13 +274,13 @@ export function AppointmentsTab() {
   const validatePatientCep = async (patientId: string, unitId: number) => {
     try {
       // Buscar CEP do paciente
-      const { data: patient, error: patientError } = await supabase
+      const { data: patient, error } = await supabase
         .from('user')
         .select('cep, nome')
         .eq('id', patientId)
         .single()
 
-      if (patientError || !patient?.cep) {
+      if (error || !patient?.cep) {
         toast({
           title: "Erro",
           description: "Paciente não possui CEP cadastrado"
@@ -318,6 +318,42 @@ export function AppointmentsTab() {
         })
         return false
       }
+
+      // Busca unidades que atendem o CEP
+      const { data: validUnitIds } = await supabase
+        .from('unidade_ceps_atende')
+        .select('"unidade_id (FK)"')
+        .gte('cep_inicial', patient.cep) // CEP inicial precisa ser MENOR OU IGUAL ao CEP do paciente
+        .lte('cep_final', patient.cep)   // CEP final precisa ser MAIOR OU IGUAL ao CEP do paciente
+
+      console.log('CEP do paciente:', patient.cep)
+      console.log('Unidades encontradas:', validUnitIds)
+
+      if (!validUnitIds || validUnitIds.length === 0) {
+        // Para debug, vamos ver todas as faixas
+        const { data: allRanges } = await supabase
+          .from('unidade_ceps_atende')
+          .select('*')
+
+        console.log('Todas as faixas:', allRanges)
+        
+        toast({
+          title: "Aviso",
+          description: `Nenhuma unidade atende o CEP ${patient.cep} do paciente ${patient.nome}`,
+          duration: 5000
+        })
+        setUnits([])
+        return
+      }
+
+      // Busca dados das unidades
+      const { data: validUnits } = await supabase
+        .from('unidade')
+        .select('*')
+        .eq('status', true)
+        .in('id', validUnitIds.map(u => u['unidade_id (FK)']))
+
+      setUnits(validUnits || [])
 
       return true
     } catch (error) {
@@ -649,45 +685,103 @@ export function AppointmentsTab() {
                 
                 <div className="p-4 space-y-4">
                   <div>
-                    <Label htmlFor="unit">Unidade</Label>
-                    <Select 
-                      onValueChange={(value) => setSelectedUnit(parseInt(value))}
-                      value={selectedUnit.toString()}
+                    <Label>Paciente</Label>
+                    <Select
+                      onValueChange={async (value) => {
+                        setSelectedPatient(value)
+                        setSelectedUnit(0) // Reseta a unidade selecionada
+                        
+                        // Busca o CEP do paciente
+                        const { data: patient, error } = await supabase
+                          .from('user')
+                          .select('cep, nome')
+                          .eq('id', value)
+                          .single()
+
+                        if (error || !patient?.cep) {
+                          toast({
+                            title: "Aviso",
+                            description: "Paciente não possui CEP cadastrado"
+                          })
+                          setUnits([])
+                          return
+                        }
+
+                        // Busca unidades que atendem o CEP
+                        const { data: validUnitIds } = await supabase
+                          .from('unidade_ceps_atende')
+                          .select('"unidade_id (FK)"')
+                          .gte('cep_inicial', patient.cep) // CEP inicial precisa ser MENOR OU IGUAL ao CEP do paciente
+                          .lte('cep_final', patient.cep)   // CEP final precisa ser MAIOR OU IGUAL ao CEP do paciente
+
+                          console.log('CEP do paciente:', patient.cep)
+                          console.log('Unidades encontradas:', validUnitIds)
+
+                          if (!validUnitIds || validUnitIds.length === 0) {
+                            // Para debug, vamos ver todas as faixas
+                            const { data: allRanges } = await supabase
+                              .from('unidade_ceps_atende')
+                              .select('*')
+
+                            console.log('Todas as faixas:', allRanges)
+                            
+                            toast({
+                              title: "Aviso",
+                              description: `Nenhuma unidade atende o CEP ${patient.cep} do paciente ${patient.nome}`,
+                              duration: 5000
+                            })
+                            setUnits([])
+                            return
+                          }
+
+                          // Busca dados das unidades
+                          const { data: validUnits } = await supabase
+                            .from('unidade')
+                            .select('*')
+                            .eq('status', true)
+                            .in('id', validUnitIds.map(u => u['unidade_id (FK)']))
+
+                          setUnits(validUnits || [])
+                      }}
+                      value={selectedPatient}
                     >
-                      <SelectTrigger id="unit">
-                        <SelectValue placeholder="Selecione uma unidade" />
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um paciente" />
                       </SelectTrigger>
                       <SelectContent>
-                        {units.map((unit) => (
-                          <SelectItem key={unit.id} value={unit.id.toString()}>
-                            {unit.nome}
+                        {patients.map((patient) => (
+                          <SelectItem key={patient.id} value={patient.id}>
+                            {patient.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
 
-                  {selectedUnit > 0 && (
-                    <div className="w-full">
-                      <Label>Data</Label>
-                      <div className="border rounded-md p-3 flex justify-center">
-                        <Calendar
-                          mode="single"
-                          selected={selectedDate}
-                          onSelect={(date) => {
-                            if (date) {
-                              setSelectedDate(date)
-                              fetchAvailableTimeSlots(selectedUnit, date)
-                            }
-                          }}
-                          locale={ptBR}
-                          className="w-full max-w-[400px]"
-                          components={{
-                            IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
-                            IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
-                          }}
-                        />
-                      </div>
+                  {selectedPatient && (
+                    <div>
+                      <Label htmlFor="unit">Unidade</Label>
+                      {units.length === 0 ? (
+                        <div className="p-4 text-center border rounded-md bg-gray-50">
+                          <p className="text-gray-500">Nenhuma unidade atende o CEP deste paciente</p>
+                        </div>
+                      ) : (
+                        <Select 
+                          onValueChange={(value) => setSelectedUnit(parseInt(value))}
+                          value={selectedUnit.toString()}
+                        >
+                          <SelectTrigger id="unit">
+                            <SelectValue placeholder="Selecione uma unidade" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {units.map((unit) => (
+                              <SelectItem key={unit.id} value={unit.id.toString()}>
+                                {unit.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
                   )}
                 </div>
@@ -726,81 +820,23 @@ export function AppointmentsTab() {
                     {selectedTimeSlot > 0 && (
                       <>
                         <div>
-                          <Label>Paciente</Label>
-                          <Select
-                            onValueChange={async (value) => {
-                              // Primeiro seleciona o paciente
-                              setSelectedPatient(value)
-
-                              // Depois valida o CEP
-                              const { data: patient, error } = await supabase
-                                .from('user')
-                                .select('cep, nome')
-                                .eq('id', value)
-                                .single()
-
-                              if (error || !patient?.cep) {
-                                toast({
-                                  title: "Aviso",
-                                  description: "Paciente não possui CEP cadastrado"
-                                })
-                                return
-                              }
-
-                              // Buscar faixas de CEP da unidade
-                              const { data: ranges } = await supabase
-                                .from('unidade_ceps_atende')
-                                .select('cep_inicial, cep_final')
-                                .eq('"unidade_id (FK)"', selectedUnit)
-
-                              // Verificar se o CEP está em alguma faixa
-                              const patientCep = patient.cep.replace(/\D/g, '')
-                              const isInRange = ranges?.some(range => {
-                                const start = range.cep_inicial.replace(/\D/g, '')
-                                const end = range.cep_final.replace(/\D/g, '')
-                                return parseInt(patientCep) >= parseInt(start) && parseInt(patientCep) <= parseInt(end)
-                              })
-
-                              if (!isInRange) {
-                                toast({
-                                  title: "Aviso",
-                                  description: `O paciente ${patient.nome} possui CEP ${patient.cep} que não é atendido por esta unidade.`
-                                })
-                              }
-                            }}
-                            value={selectedPatient}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione um paciente" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {patients.map((patient) => (
-                                <SelectItem key={patient.id} value={patient.id}>
-                                  {patient.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
                           <Label>Forma de Pagamento</Label>
-                    <Select 
+                          <Select 
                             onValueChange={(value) => setSelectedPaymentMethod(parseInt(value))}
                             value={selectedPaymentMethod.toString()}
-                    >
+                          >
                             <SelectTrigger>
-                        <SelectValue placeholder="Selecione a forma de pagamento" />
-                      </SelectTrigger>
-                      <SelectContent>
+                              <SelectValue placeholder="Selecione a forma de pagamento" />
+                            </SelectTrigger>
+                            <SelectContent>
                               {paymentMethods.map((method) => (
                                 <SelectItem key={method.id} value={method.id.toString()}>
                                   {method.nome}
                                 </SelectItem>
                               ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                            </SelectContent>
+                          </Select>
+                        </div>
 
                         {selectedPaymentMethod > 0 && (
                           <div>
@@ -812,14 +848,14 @@ export function AppointmentsTab() {
                                 return (
                                   <div key={vaccineId} className="flex items-center justify-between p-2 border rounded">
                                     <span>{vaccine?.nome} - {dose}ª Dose</span>
-                <Button
+                                    <Button
                                       variant="ghost" 
-                  size="sm"
+                                      size="sm"
                                       onClick={() => setSelectedVaccines(prev => prev.filter(v => v.vaccineId !== vaccineId))}
-                >
+                                    >
                                       <Trash2 className="h-4 w-4 text-red-500" />
-                </Button>
-              </div>
+                                    </Button>
+                                  </div>
                                 )
                               })}
 
@@ -873,7 +909,7 @@ export function AppointmentsTab() {
                                   </Select>
                                 )}
 
-                <Button
+                                <Button
                                   variant="outline"
                                   onClick={() => {
                                     if (selectedVaccineId && selectedDose > 0) {
@@ -892,9 +928,9 @@ export function AppointmentsTab() {
                                 >
                                   <CirclePlus className="h-4 w-4 mr-2" />
                                   Adicionar Vacina
-                </Button>
-              </div>
-            </div>
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         )}
                       </>
@@ -909,7 +945,7 @@ export function AppointmentsTab() {
                 disabled={!selectedUnit || !selectedDate || !selectedTimeSlot || !selectedPatient || !selectedPaymentMethod}
               > 
                 <CirclePlus className="w-4 h-4 mr-2" /> Confirmar Agendamento
-                      </Button>
+              </Button>
             </div>
 
             {/* Lado direito - Resumo */}
