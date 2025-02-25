@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { CirclePlus, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react"
+import { CirclePlus, Edit, Trash2, ChevronLeft, ChevronRight, Printer, Eye } from "lucide-react"
 import { Unit, Patient, Appointment, UnitSchedule, Vaccine } from '@/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -32,10 +32,10 @@ export function AppointmentsTab() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [selectedPatient, setSelectedPatient] = useState<string>('')
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<number>(0)
-  const [paymentMethods, setPaymentMethods] = useState<{id: number, nome: string}[]>([])
+  const [paymentMethods, setPaymentMethods] = useState<{ id: number, nome: string }[]>([])
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<number>(0)
   const [vaccines, setVaccines] = useState<Vaccine[]>([])
-  const [selectedVaccines, setSelectedVaccines] = useState<{vaccineId: number, dose: number}[]>([])
+  const [selectedVaccines, setSelectedVaccines] = useState<{ vaccineId: number, dose: number }[]>([])
   const [selectedVaccineId, setSelectedVaccineId] = useState<string>('')
   const [selectedDose, setSelectedDose] = useState<number>(0)
   const [totalValue, setTotalValue] = useState<number>(0)
@@ -43,10 +43,9 @@ export function AppointmentsTab() {
   const [activeTab, setActiveTab] = useState<string>("list")
   const [filterUnit, setFilterUnit] = useState<number>(0)
   const [filterStatus, setFilterStatus] = useState<string>('')
-  const [filterDateRange, setFilterDateRange] = useState<{
-    from: Date | undefined
-    to: Date | undefined
-  }>({ from: undefined, to: undefined })
+  const [filterDateRange, setFilterDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined })
+  const [selectedAppointmentDetails, setSelectedAppointmentDetails] = useState<Appointment | null>(null)
+  const [selectedAppointmentIds, setSelectedAppointmentIds] = useState<number[]>([])
 
   // 🔥 Busca unidades disponíveis
   const fetchUnits = async () => {
@@ -67,7 +66,7 @@ export function AppointmentsTab() {
     try {
       const { data, error } = await supabase
         .from('user')
-        .select('*')  // Selecionar todos os campos
+        .select('*')
         .is('user_role_id', null)
         .eq('is_active', true)
 
@@ -123,9 +122,8 @@ export function AppointmentsTab() {
         return
       }
 
-      // Verifica se retornou algum horário
       if (!schedules || schedules.length === 0) {
-    toast({
+        toast({
           title: "Aviso",
           description: "Nenhum horário de atendimento para esse dia da semana",
           duration: 3000
@@ -136,7 +134,6 @@ export function AppointmentsTab() {
       }
 
       setAvailableTimeSlots(schedules)
-
     } catch (err) {
       console.error(err)
       toast({
@@ -149,7 +146,6 @@ export function AppointmentsTab() {
 
   const fetchPaymentMethods = async () => {
     try {
-      // Buscar da tabela ref_formas_pagamentos
       const { data, error } = await supabase
         .from('ref_formas_pagamentos')
         .select('id, nome')
@@ -160,12 +156,9 @@ export function AppointmentsTab() {
         return
       }
 
-      console.log('Formas de pagamento:', data) // Debug
-
       if (data && data.length > 0) {
         setPaymentMethods(data)
       } else {
-        // Se não houver dados, usar valores padrão
         setPaymentMethods([
           { id: 1, nome: 'Pix' },
           { id: 2, nome: 'Cartão de Crédito' },
@@ -174,7 +167,7 @@ export function AppointmentsTab() {
       }
     } catch (error) {
       console.error('Erro:', error)
-    toast({
+      toast({
         title: "Erro",
         description: "Erro ao carregar formas de pagamento"
       })
@@ -208,7 +201,7 @@ export function AppointmentsTab() {
     setVaccines(data || [])
   }
 
-  // Adicionar função para buscar agendamentos
+  // Busca agendamentos
   const fetchAppointments = async () => {
     try {
       const { data, error } = await supabase
@@ -252,7 +245,6 @@ export function AppointmentsTab() {
 
       setAppointments(formattedAppointments)
       
-      // Organizar por dia
       const byDay = formattedAppointments.reduce((acc, appointment) => {
         const day = format(appointment.scheduled_date, 'yyyy-MM-dd')
         if (!acc[day]) acc[day] = []
@@ -270,10 +262,9 @@ export function AppointmentsTab() {
     }
   }
 
-  // Adicionar função para validar CEP
+  // Função para validar CEP do paciente e filtrar as unidades que atendem aquele CEP
   const validatePatientCep = async (patientId: string, unitId: number) => {
     try {
-      // Buscar CEP do paciente
       const { data: patient, error } = await supabase
         .from('user')
         .select('cep, nome')
@@ -290,7 +281,6 @@ export function AppointmentsTab() {
 
       const patientCep = patient.cep.replace(/\D/g, '')
 
-      // Buscar faixas de CEP da unidade
       const { data: ranges, error: rangesError } = await supabase
         .from('unidade_ceps_atende')
         .select('cep_inicial, cep_final')
@@ -304,7 +294,6 @@ export function AppointmentsTab() {
         return false
       }
 
-      // Verificar se o CEP está em alguma faixa
       const isInRange = ranges.some(range => {
         const start = range.cep_inicial.replace(/\D/g, '')
         const end = range.cep_final.replace(/\D/g, '')
@@ -319,22 +308,19 @@ export function AppointmentsTab() {
         return false
       }
 
-      // Busca unidades que atendem o CEP
       const { data: validUnitIds } = await supabase
         .from('unidade_ceps_atende')
         .select('"unidade_id (FK)"')
-        .gte('cep_inicial', patient.cep) // CEP inicial precisa ser MENOR OU IGUAL ao CEP do paciente
-        .lte('cep_final', patient.cep)   // CEP final precisa ser MAIOR OU IGUAL ao CEP do paciente
+        .gte('cep_inicial', patient.cep)
+        .lte('cep_final', patient.cep)
 
       console.log('CEP do paciente:', patient.cep)
       console.log('Unidades encontradas:', validUnitIds)
 
       if (!validUnitIds || validUnitIds.length === 0) {
-        // Para debug, vamos ver todas as faixas
         const { data: allRanges } = await supabase
           .from('unidade_ceps_atende')
           .select('*')
-
         console.log('Todas as faixas:', allRanges)
         
         toast({
@@ -346,7 +332,6 @@ export function AppointmentsTab() {
         return
       }
 
-      // Busca dados das unidades
       const { data: validUnits } = await supabase
         .from('unidade')
         .select('*')
@@ -363,6 +348,100 @@ export function AppointmentsTab() {
         description: "Erro ao validar CEP do paciente"
       })
       return false
+    }
+  }
+
+  // Função para imprimir os dados de um agendamento individual
+  const handlePrintAppointment = (appointment: Appointment) => {
+    const printWindow = window.open('', '_blank', 'width=600,height=800')
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Impressão de Agendamento</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; }
+              h2 { text-align: center; }
+              .detail { margin-bottom: 10px; }
+            </style>
+          </head>
+          <body>
+            <h2>Detalhes do Agendamento</h2>
+            <div class="detail"><strong>Paciente:</strong> ${appointment.patient_name}</div>
+            <div class="detail"><strong>Data:</strong> ${format(appointment.scheduled_date, 'dd/MM/yyyy')}</div>
+            <div class="detail"><strong>Horário:</strong> ${appointment.time_slot}</div>
+            <div class="detail"><strong>Unidade:</strong> ${appointment.unit_name}</div>
+            <div class="detail"><strong>Vacinas:</strong> ${appointment.vaccines.map(v => v.nome).join(', ')}</div>
+            <div class="detail"><strong>Valor:</strong> R$ ${appointment.valor_total.toFixed(2)}</div>
+            <div class="detail"><strong>Status:</strong> ${appointment.status}</div>
+          </body>
+        </html>
+      `)
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
+      printWindow.close()
+    }
+  }
+
+  // Função para imprimir múltiplos agendamentos selecionados
+  const handleBulkPrint = () => {
+    const appointmentsToPrint = appointments.filter(appt => selectedAppointmentIds.includes(appt.id))
+    if (appointmentsToPrint.length === 0) {
+      toast({ title: "Aviso", description: "Nenhum agendamento selecionado para impressão." })
+      return
+    }
+    const printWindow = window.open('', '_blank', 'width=800,height=1000')
+    if (printWindow) {
+      let htmlContent = `
+        <html>
+          <head>
+            <title>Impressão de Agendamentos</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; }
+              .appointment { margin-bottom: 20px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+              .appointment h2 { margin: 0; }
+            </style>
+          </head>
+          <body>
+      `
+      appointmentsToPrint.forEach(appt => {
+        htmlContent += `
+          <div class="appointment">
+            <h2>Agendamento - ${appt.patient_name}</h2>
+            <div><strong>Data:</strong> ${format(appt.scheduled_date, 'dd/MM/yyyy')}</div>
+            <div><strong>Horário:</strong> ${appt.time_slot}</div>
+            <div><strong>Unidade:</strong> ${appt.unit_name}</div>
+            <div><strong>Vacinas:</strong> ${appt.vaccines.map(v => v.nome).join(', ')}</div>
+            <div><strong>Valor:</strong> R$ ${appt.valor_total.toFixed(2)}</div>
+            <div><strong>Status:</strong> ${appt.status}</div>
+          </div>
+        `
+      })
+      htmlContent += `</body></html>`
+      printWindow.document.write(htmlContent)
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
+      printWindow.close()
+    }
+  }
+
+  // Função para alternar seleção de agendamentos via checkbox
+  const toggleAppointmentSelection = (appointmentId: number) => {
+    if (selectedAppointmentIds.includes(appointmentId)) {
+      setSelectedAppointmentIds(selectedAppointmentIds.filter(id => id !== appointmentId))
+    } else {
+      setSelectedAppointmentIds([...selectedAppointmentIds, appointmentId])
+    }
+  }
+
+  // Função para selecionar ou deselecionar todos os agendamentos listados
+  const toggleSelectAll = () => {
+    if (selectedAppointmentIds.length === filteredAppointments.length) {
+      setSelectedAppointmentIds([])
+    } else {
+      setSelectedAppointmentIds(filteredAppointments.map(appt => appt.id))
     }
   }
 
@@ -393,7 +472,6 @@ export function AppointmentsTab() {
 
   const handleScheduleAppointment = async () => {
     try {
-      // Validação dos campos obrigatórios
       if (!selectedUnit || !selectedDate || !selectedTimeSlot || !selectedPatient || !selectedPaymentMethod || selectedVaccines.length === 0) {
         toast({
           title: "Erro",
@@ -402,7 +480,6 @@ export function AppointmentsTab() {
         return
       }
 
-      // Mostrar toast de loading
       toast({
         title: "Processando",
         description: "Realizando agendamento..."
@@ -419,7 +496,7 @@ export function AppointmentsTab() {
           forma_pagamento_id: selectedPaymentMethod,
           valor_total: totalValue,
           horario: timeSlot?.horario_inicio,
-          dia: selectedDate.toISOString().split('T')[0], // Formatar data corretamente
+          dia: selectedDate.toISOString().split('T')[0],
           status_id: 1
         })
         .select()
@@ -427,24 +504,20 @@ export function AppointmentsTab() {
 
       if (error) throw error
 
-      // Recarregar dados
       await fetchAppointments()
 
-      // Mostrar sucesso
       toast({
         title: "Sucesso!",
         description: "Agendamento realizado com sucesso!"
       })
 
-      // Limpar formulário
       setSelectedDate(undefined)
       setSelectedTimeSlot(0)
       setSelectedPatient('')
       setSelectedPaymentMethod(0)
       setSelectedVaccines([])
       setAvailableTimeSlots([])
-      setActiveTab('list') // Volta para a lista
-
+      setActiveTab('list')
     } catch (error) {
       console.error('Erro ao realizar agendamento:', error)
       toast({
@@ -482,10 +555,18 @@ export function AppointmentsTab() {
     <div className="w-full h-full flex flex-col space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Agendamentos</h2>
-        <Button onClick={() => setActiveTab("new")} className="bg-primary">
-          <CirclePlus className="h-4 w-4 mr-2" />
-          Novo Agendamento
-        </Button>
+        <div className="flex items-center">
+          <Button onClick={() => setActiveTab("new")} className="bg-primary">
+            <CirclePlus className="h-4 w-4 mr-2" />
+            Novo Agendamento
+          </Button>
+          {selectedAppointmentIds.length > 0 && (
+            <Button variant="outline" onClick={handleBulkPrint} className="ml-2">
+              <Printer className="h-4 w-4 mr-2" />
+              Imprimir Selecionados
+            </Button>
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="list" className="w-full">
@@ -590,6 +671,13 @@ export function AppointmentsTab() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>
+                      <input
+                        type="checkbox"
+                        checked={selectedAppointmentIds.length === filteredAppointments.length && filteredAppointments.length > 0}
+                        onChange={toggleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead>Paciente</TableHead>
                     <TableHead>Data</TableHead>
                     <TableHead>Horário</TableHead>
@@ -603,6 +691,13 @@ export function AppointmentsTab() {
                 <TableBody>
                   {filteredAppointments.map((appointment) => (
                     <TableRow key={appointment.id}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={selectedAppointmentIds.includes(appointment.id)}
+                          onChange={() => toggleAppointmentSelection(appointment.id)}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">{appointment.patient_name}</TableCell>
                       <TableCell>{format(appointment.scheduled_date, 'dd/MM/yyyy')}</TableCell>
                       <TableCell>{appointment.time_slot}</TableCell>
@@ -621,8 +716,8 @@ export function AppointmentsTab() {
                         <span className={`px-2 py-1 rounded-full text-xs font-medium
                           ${appointment.status === 'Agendado' ? 'bg-blue-100 text-blue-700' : 
                             appointment.status === 'Concluído' ? 'bg-green-100 text-green-700' : 
-                            'bg-red-100 text-red-700'}`
-                        }>
+                            'bg-red-100 text-red-700'}`}
+                        >
                           {appointment.status}
                         </span>
                       </TableCell>
@@ -633,6 +728,12 @@ export function AppointmentsTab() {
                           </Button>
                           <Button variant="outline" size="sm">
                             <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handlePrintAppointment(appointment)}>
+                            <Printer className="h-4 w-4" />
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => setSelectedAppointmentDetails(appointment)}>
+                            <Eye className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>
@@ -688,10 +789,10 @@ export function AppointmentsTab() {
                     <Label>Paciente</Label>
                     <Select
                       onValueChange={async (value) => {
+                        // Lógica para selecionar paciente e filtrar unidades pelo CEP
                         setSelectedPatient(value)
-                        setSelectedUnit(0) // Reseta a unidade selecionada
+                        setSelectedUnit(0)
                         
-                        // Busca o CEP do paciente
                         const { data: patient, error } = await supabase
                           .from('user')
                           .select('cep, nome')
@@ -707,41 +808,37 @@ export function AppointmentsTab() {
                           return
                         }
 
-                        // Busca unidades que atendem o CEP
                         const { data: validUnitIds } = await supabase
                           .from('unidade_ceps_atende')
                           .select('"unidade_id (FK)"')
-                          .gte('cep_inicial', patient.cep) // CEP inicial precisa ser MENOR OU IGUAL ao CEP do paciente
-                          .lte('cep_final', patient.cep)   // CEP final precisa ser MAIOR OU IGUAL ao CEP do paciente
+                          .gte('cep_inicial', patient.cep)
+                          .lte('cep_final', patient.cep)
 
-                          console.log('CEP do paciente:', patient.cep)
-                          console.log('Unidades encontradas:', validUnitIds)
+                        console.log('CEP do paciente:', patient.cep)
+                        console.log('Unidades encontradas:', validUnitIds)
 
-                          if (!validUnitIds || validUnitIds.length === 0) {
-                            // Para debug, vamos ver todas as faixas
-                            const { data: allRanges } = await supabase
-                              .from('unidade_ceps_atende')
-                              .select('*')
-
-                            console.log('Todas as faixas:', allRanges)
-                            
-                            toast({
-                              title: "Aviso",
-                              description: `Nenhuma unidade atende o CEP ${patient.cep} do paciente ${patient.nome}`,
-                              duration: 5000
-                            })
-                            setUnits([])
-                            return
-                          }
-
-                          // Busca dados das unidades
-                          const { data: validUnits } = await supabase
-                            .from('unidade')
+                        if (!validUnitIds || validUnitIds.length === 0) {
+                          const { data: allRanges } = await supabase
+                            .from('unidade_ceps_atende')
                             .select('*')
-                            .eq('status', true)
-                            .in('id', validUnitIds.map(u => u['unidade_id (FK)']))
+                          console.log('Todas as faixas:', allRanges)
+                          
+                          toast({
+                            title: "Aviso",
+                            description: `Nenhuma unidade atende o CEP ${patient.cep} do paciente ${patient.nome}`,
+                            duration: 5000
+                          })
+                          setUnits([])
+                          return
+                        }
 
-                          setUnits(validUnits || [])
+                        const { data: validUnits } = await supabase
+                          .from('unidade')
+                          .select('*')
+                          .eq('status', true)
+                          .in('id', validUnitIds.map(u => u['unidade_id (FK)']))
+
+                        setUnits(validUnits || [])
                       }}
                       value={selectedPatient}
                     >
@@ -842,7 +939,6 @@ export function AppointmentsTab() {
                           <div>
                             <Label>Vacinas</Label>
                             <div className="space-y-4">
-                              {/* Lista de vacinas selecionadas */}
                               {selectedVaccines.map(({ vaccineId, dose }) => {
                                 const vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
                                 return (
@@ -859,13 +955,12 @@ export function AppointmentsTab() {
                                 )
                               })}
 
-                              {/* Adicionar nova vacina */}
                               <div className="flex gap-2">
                                 <Select
                                   value={selectedVaccineId}
                                   onValueChange={(value) => {
                                     setSelectedVaccineId(value)
-                                    setSelectedDose(0) // Reseta a dose quando muda a vacina
+                                    setSelectedDose(0)
                                   }}
                                 >
                                   <SelectTrigger className="w-[300px]">
@@ -920,8 +1015,8 @@ export function AppointmentsTab() {
                                           dose: selectedDose 
                                         }
                                       ])
-                                      setSelectedVaccineId('') // Limpa a seleção da vacina
-                                      setSelectedDose(0) // Limpa a seleção da dose
+                                      setSelectedVaccineId('')
+                                      setSelectedDose(0)
                                     }
                                   }}
                                   disabled={!selectedVaccineId || selectedDose === 0}
@@ -1011,6 +1106,33 @@ export function AppointmentsTab() {
                 </div>
               </div>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Visualização de Detalhes do Agendamento */}
+      <Dialog 
+        open={selectedAppointmentDetails !== null} 
+        onOpenChange={(open) => { if (!open) setSelectedAppointmentDetails(null) }}
+      >
+        <DialogContent className="max-w-[90%] w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Agendamento</DialogTitle>
+          </DialogHeader>
+          <div className="p-4 space-y-4">
+            <div><strong>Paciente:</strong> {selectedAppointmentDetails?.patient_name}</div>
+            <div>
+              <strong>Data:</strong> {selectedAppointmentDetails ? format(selectedAppointmentDetails.scheduled_date, 'dd/MM/yyyy') : ''}
+            </div>
+            <div><strong>Horário:</strong> {selectedAppointmentDetails?.time_slot}</div>
+            <div><strong>Unidade:</strong> {selectedAppointmentDetails?.unit_name}</div>
+            <div>
+              <strong>Vacinas:</strong> {selectedAppointmentDetails?.vaccines.map(v => v.nome).join(', ')}
+            </div>
+            <div>
+              <strong>Valor Total:</strong> R$ {selectedAppointmentDetails?.valor_total.toFixed(2)}
+            </div>
+            <div><strong>Status:</strong> {selectedAppointmentDetails?.status}</div>
           </div>
         </DialogContent>
       </Dialog>
