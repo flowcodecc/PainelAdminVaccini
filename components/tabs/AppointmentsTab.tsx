@@ -217,8 +217,28 @@ export function AppointmentsTab() {
       const formattedAppointments = await Promise.all(data.map(async appointment => {
         const { data: vaccinesData } = await supabase
           .from('ref_vacinas')
-          .select('ref_vacinasID, nome, preco')
+          .select(`
+            ref_vacinasID,
+            nome,
+            codigo,
+            preco,
+            status,
+            valor_plano,
+            esquema_id,
+            esquema
+          `)
           .in('ref_vacinasID', appointment.vacinas_id || [])
+
+        const vaccines = (vaccinesData || []).map(v => ({
+          ref_vacinasID: v.ref_vacinasID,
+          nome: v.nome,
+          codigo: v.codigo || '',
+          preco: v.preco || 0,
+          status: v.status || true,
+          valor_plano: v.valor_plano || v.preco || 0,
+          esquema_id: v.esquema_id || 0,
+          esquema: v.esquema
+        }))
 
         return {
           id: appointment.id,
@@ -229,17 +249,17 @@ export function AppointmentsTab() {
           status: appointment.status?.nome || 'Pendente',
           unit_name: appointment.unidade?.nome,
           unit_id: appointment.unidade_id,
-          vaccines: vaccinesData || [],
+          vaccines: vaccines as Vaccine[],
           valor_total: appointment.valor_total,
           user: {
-            logradouro: appointment.logradouro,
-            numero: appointment.numero,
-            bairro: appointment.bairro,
-            cidade: appointment.cidade,
-            estado: appointment.estado,
-            cep: appointment.cep,
-            email: appointment.email,
-            celular: appointment.celular
+            logradouro: appointment.logradouro || '',
+            numero: appointment.numero || '',
+            bairro: appointment.bairro || '',
+            cidade: appointment.cidade || '',
+            estado: appointment.estado || '',
+            cep: appointment.cep || '',
+            email: appointment.email || '',
+            celular: appointment.celular || ''
           }
         }
       }))
