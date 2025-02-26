@@ -205,43 +205,44 @@ export function AppointmentsTab() {
   const fetchAppointments = async () => {
     try {
       const { data, error } = await supabase
-        .from('agendamento')
+        .from('vw_agendamentos_com_endereco')
         .select(`
           *,
-          user:user_id (nome, sobrenome),
           unidade:unidade_id (nome),
-          status:status_id (nome),
-          forma_pagamento:forma_pagamento_id (nome)
+          status:status_id (nome)
         `)
-        .eq('status_id', 1)
-        .order('horario', { ascending: true })
 
       if (error) throw error
 
-      const formattedAppointments = await Promise.all(data
-        .filter(appointment => appointment.user && appointment.unidade)
-        .map(async appointment => {
-          const { data: vaccinesData } = await supabase
-            .from('ref_vacinas')
-            .select('ref_vacinasID, nome, preco')
-            .in('ref_vacinasID', appointment.vacinas_id || [])
+      const formattedAppointments = await Promise.all(data.map(async appointment => {
+        const { data: vaccinesData } = await supabase
+          .from('ref_vacinas')
+          .select('ref_vacinasID, nome, preco')
+          .in('ref_vacinasID', appointment.vacinas_id || [])
 
-          return {
-            id: appointment.id,
-            patient_name: `${appointment.user.nome} ${appointment.user.sobrenome || ''}`.trim(),
-            scheduled_date: new Date(appointment.dia),
-            time_slot: appointment.horario,
-            status: appointment.status?.nome || 'Pendente',
-            unit_name: appointment.unidade.nome,
-            unit_id: appointment.unidade_id,
-            vaccines: (vaccinesData || []).map(v => ({
-              id: v.ref_vacinasID,
-              nome: v.nome,
-              preco: v.preco
-            })),
-            valor_total: appointment.valor_total
+        return {
+          id: appointment.id,
+          patient_id: appointment.user_id,
+          patient_name: `${appointment.nome} ${appointment.sobrenome || ''}`,
+          scheduled_date: new Date(appointment.dia),
+          time_slot: appointment.horario,
+          status: appointment.status?.nome || 'Pendente',
+          unit_name: appointment.unidade?.nome,
+          unit_id: appointment.unidade_id,
+          vaccines: vaccinesData || [],
+          valor_total: appointment.valor_total,
+          user: {
+            logradouro: appointment.logradouro,
+            numero: appointment.numero,
+            bairro: appointment.bairro,
+            cidade: appointment.cidade,
+            estado: appointment.estado,
+            cep: appointment.cep,
+            email: appointment.email,
+            celular: appointment.celular
           }
-        }))
+        }
+      }))
 
       setAppointments(formattedAppointments)
       
@@ -254,7 +255,7 @@ export function AppointmentsTab() {
 
       setAppointmentsByDay(byDay)
     } catch (error) {
-      console.error('Erro:', error)
+      console.error('Erro ao buscar agendamentos:', error)
       toast({
         title: "Erro",
         description: "Erro ao carregar agendamentos"
@@ -352,78 +353,147 @@ export function AppointmentsTab() {
   }
 
   // Função para imprimir os dados de um agendamento individual
-  const handlePrintAppointment = (appointment: Appointment) => {
-    const printWindow = window.open('', '_blank', 'width=600,height=800')
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Impressão de Agendamento</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              h2 { text-align: center; }
-              .detail { margin-bottom: 10px; }
-            </style>
-          </head>
-          <body>
-            <h2>Detalhes do Agendamento</h2>
-            <div class="detail"><strong>Paciente:</strong> ${appointment.patient_name}</div>
-            <div class="detail"><strong>Data:</strong> ${format(appointment.scheduled_date, 'dd/MM/yyyy')}</div>
-            <div class="detail"><strong>Horário:</strong> ${appointment.time_slot}</div>
-            <div class="detail"><strong>Unidade:</strong> ${appointment.unit_name}</div>
-            <div class="detail"><strong>Vacinas:</strong> ${appointment.vaccines.map(v => v.nome).join(', ')}</div>
-            <div class="detail"><strong>Valor:</strong> R$ ${appointment.valor_total.toFixed(2)}</div>
-            <div class="detail"><strong>Status:</strong> ${appointment.status}</div>
-          </body>
-        </html>
-      `)
-      printWindow.document.close()
-      printWindow.focus()
-      printWindow.print()
-      printWindow.close()
+  const handlePrintAppointment = async (appointment: Appointment, detailed: boolean = false) => {
+    try {
+      // Buscar dados detalhados do paciente se necessário
+      let patientDetails = null
+      if (detailed) {
+        const { data, error } = await supabase
+          .from('user')
+          .select('*')
+          .eq('id', appointment.patient_id)
+          .single()
+        
+        if (error) throw error
+        patientDetails = data
+      }
+
+      const printWindow = window.open('', '_blank', 'width=600,height=800')
+      if (printWindow) {
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Impressão de Agendamento</title>
+              <style>
+                body { font-family: Arial, sans-serif; padding: 20px; }
+                h2 { text-align: center; }
+                .detail { margin-bottom: 10px; }
+                .section { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; }
+              </style>
+            </head>
+            <body>
+              <h2>Detalhes do Agendamento</h2>
+              ${detailed ? `
+                <div class="section">
+                  <h3>Dados do Paciente</h3>
+                  <div class="detail"><strong>Nome Completo:</strong> ${patientDetails?.nome} ${patientDetails?.sobrenome || ''}</div>
+                  <div class="detail"><strong>CPF:</strong> ${patientDetails?.cpf || '-'}</div>
+                  <div class="detail"><strong>Data de Nascimento:</strong> ${patientDetails?.data_nascimento ? format(new Date(patientDetails.data_nascimento), 'dd/MM/yyyy') : '-'}</div>
+                  <div class="detail"><strong>Endereço:</strong> ${patientDetails?.endereco || '-'}</div>
+                  <div class="detail"><strong>Email:</strong> ${patientDetails?.email || '-'}</div>
+                  <div class="detail"><strong>Telefone:</strong> ${patientDetails?.telefone || '-'}</div>
+                </div>
+              ` : ''}
+              <div class="section">
+                <h3>Dados do Agendamento</h3>
+                <div class="detail"><strong>Data:</strong> ${format(appointment.scheduled_date, 'dd/MM/yyyy')}</div>
+                <div class="detail"><strong>Horário:</strong> ${appointment.time_slot}</div>
+                <div class="detail"><strong>Unidade:</strong> ${appointment.unit_name}</div>
+              </div>
+              <div class="section">
+                <h3>Vacinas</h3>
+                ${appointment.vaccines.map(v => `
+                  <div class="detail">
+                    <strong>${v.nome}</strong> - R$ ${v.preco.toFixed(2)}
+                  </div>
+                `).join('')}
+                <div class="detail" style="margin-top: 10px; font-weight: bold;">
+                  <strong>Valor Total:</strong> R$ ${appointment.valor_total.toFixed(2)}
+                </div>
+              </div>
+              <div class="section">
+                <div class="detail"><strong>Status:</strong> ${appointment.status}</div>
+              </div>
+            </body>
+          </html>
+        `)
+        printWindow.document.close()
+        printWindow.focus()
+        printWindow.print()
+        printWindow.close()
+      }
+    } catch (error) {
+      console.error('Erro ao imprimir:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao gerar impressão"
+      })
     }
   }
 
+  // Atualizar o botão de impressão para mostrar as opções
+  const PrintButton = ({ appointment }: { appointment: Appointment }) => {
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm">
+            <Printer className="h-4 w-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-40">
+          <div className="flex flex-col gap-1">
+            <Button 
+              variant="ghost" 
+              onClick={() => handleBulkPrint([appointment])}
+            >
+              Impressão Simples
+            </Button>
+            <Button 
+              variant="ghost" 
+              onClick={() => handlePrintMultiple([appointment])}
+            >
+              Impressão Detalhada
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+    )
+  }
+
   // Função para imprimir múltiplos agendamentos selecionados
-  const handleBulkPrint = () => {
-    const appointmentsToPrint = appointments.filter(appt => selectedAppointmentIds.includes(appt.id))
-    if (appointmentsToPrint.length === 0) {
-      toast({ title: "Aviso", description: "Nenhum agendamento selecionado para impressão." })
-      return
-    }
-    const printWindow = window.open('', '_blank', 'width=800,height=1000')
+  const handleBulkPrint = (appointmentsToPrint: Appointment[]) => {
+    const printWindow = window.open('', '_blank')
     if (printWindow) {
-      let htmlContent = `
+      const content = appointmentsToPrint.map(appointment => `
+        <div style="page-break-after: always;">
+          <h2>Comprovante de Agendamento</h2>
+          
+          <div style="margin: 20px 0;">
+            <p><strong>Data:</strong> ${format(appointment.scheduled_date, 'dd/MM/yyyy')}</p>
+            <p><strong>Horário:</strong> ${appointment.time_slot}</p>
+            <p><strong>Unidade:</strong> ${appointment.unit_name}</p>
+            <p><strong>Vacinas:</strong> ${appointment.vaccines.map(v => v.nome).join(', ')}</p>
+            <p><strong>Valor Total:</strong> R$ ${appointment.valor_total.toFixed(2)}</p>
+            <p><strong>Status:</strong> ${appointment.status}</p>
+          </div>
+        </div>
+      `).join('')
+
+      printWindow.document.write(`
         <html>
           <head>
-            <title>Impressão de Agendamentos</title>
+            <title>Comprovantes de Agendamento</title>
             <style>
               body { font-family: Arial, sans-serif; padding: 20px; }
-              .appointment { margin-bottom: 20px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
-              .appointment h2 { margin: 0; }
+              h2 { text-align: center; margin-bottom: 20px; }
             </style>
           </head>
           <body>
-      `
-      appointmentsToPrint.forEach(appt => {
-        htmlContent += `
-          <div class="appointment">
-            <h2>Agendamento - ${appt.patient_name}</h2>
-            <div><strong>Data:</strong> ${format(appt.scheduled_date, 'dd/MM/yyyy')}</div>
-            <div><strong>Horário:</strong> ${appt.time_slot}</div>
-            <div><strong>Unidade:</strong> ${appt.unit_name}</div>
-            <div><strong>Vacinas:</strong> ${appt.vaccines.map(v => v.nome).join(', ')}</div>
-            <div><strong>Valor:</strong> R$ ${appt.valor_total.toFixed(2)}</div>
-            <div><strong>Status:</strong> ${appt.status}</div>
-          </div>
-        `
-      })
-      htmlContent += `</body></html>`
-      printWindow.document.write(htmlContent)
-      printWindow.document.close()
-      printWindow.focus()
-      printWindow.print()
-      printWindow.close()
+            ${content}
+            <script>window.print(); window.close();</script>
+          </body>
+        </html>
+      `)
     }
   }
 
@@ -551,21 +621,112 @@ export function AppointmentsTab() {
     return matches
   })
 
+  // Função para imprimir múltiplos agendamentos
+  const handlePrintMultiple = (appointmentsToPrint: Appointment[]) => {
+    const printWindow = window.open('', '_blank')
+    if (printWindow) {
+      const content = appointmentsToPrint.map(appointment => `
+        <div style="page-break-after: always;">
+          <div class="header">
+            <div class="date">${format(new Date(), 'dd/MM/yyyy, HH:mm')}</div>
+            <h2>Detalhes do Agendamento</h2>
+          </div>
+
+          <div class="divider"></div>
+          
+          <h3>Dados do Paciente</h3>
+          <p><strong>Paciente:</strong> ${appointment.patient_name}</p>
+          <p><strong>Data de Nascimento:</strong> -</p>
+          <p><strong>Endereço:</strong> ${appointment.user.logradouro}, ${appointment.user.numero} - ${appointment.user.bairro}, ${appointment.user.cidade} - ${appointment.user.estado}, CEP: ${appointment.user.cep}</p>
+          <p><strong>Email:</strong> ${appointment.user.email}</p>
+          <p><strong>Telefone:</strong> ${appointment.user.celular}</p>
+
+          <div class="divider"></div>
+
+          <h3>Dados do Agendamento</h3>
+          <p><strong>Data:</strong> ${format(appointment.scheduled_date, 'dd/MM/yyyy')}</p>
+          <p><strong>Horário:</strong> ${appointment.time_slot}</p>
+          <p><strong>Unidade:</strong> ${appointment.unit_name}</p>
+
+          <div class="divider"></div>
+
+          <h3>Vacinas</h3>
+          <p>${appointment.vaccines.map(v => v.nome).join(', ')} - R$ ${appointment.valor_total.toFixed(2)}</p>
+          <p><strong>Valor Total:</strong> R$ ${appointment.valor_total.toFixed(2)}</p>
+
+          <div class="divider"></div>
+
+          <p><strong>Status:</strong> ${appointment.status}</p>
+        </div>
+      `).join('')
+
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Comprovantes de Agendamento</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; }
+              .header { margin-bottom: 20px; }
+              .header .date { text-align: right; font-size: 14px; }
+              h2 { text-align: center; margin: 20px 0; }
+              .divider { border-bottom: 1px solid #000; margin: 20px 0; }
+              @media print { @page { margin: 2cm; } }
+            </style>
+          </head>
+          <body>
+            ${content}
+            <script>window.print(); window.close();</script>
+          </body>
+        </html>
+      `)
+    }
+  }
+
   return (
     <div className="w-full h-full flex flex-col space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Agendamentos</h2>
-        <div className="flex items-center">
-          <Button onClick={() => setActiveTab("new")} className="bg-primary">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">Agendamentos</h2>
+        <div className="flex gap-2">
+          {selectedAppointmentIds.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline">
+                  <Printer className="h-4 w-4 mr-2" />
+                  Imprimir Selecionados
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-40">
+                <div className="flex flex-col gap-1">
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => {
+                      const selectedAppointments = appointments.filter(app => 
+                        selectedAppointmentIds.includes(app.id)
+                      )
+                      handleBulkPrint(selectedAppointments)
+                    }}
+                  >
+                    Impressão Simples
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => {
+                      const selectedAppointments = appointments.filter(app => 
+                        selectedAppointmentIds.includes(app.id)
+                      )
+                      handlePrintMultiple(selectedAppointments)
+                    }}
+                  >
+                    Impressão Detalhada
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          <Button onClick={() => setActiveTab("new")}>
             <CirclePlus className="h-4 w-4 mr-2" />
             Novo Agendamento
           </Button>
-          {selectedAppointmentIds.length > 0 && (
-            <Button variant="outline" onClick={handleBulkPrint} className="ml-2">
-              <Printer className="h-4 w-4 mr-2" />
-              Imprimir Selecionados
-            </Button>
-          )}
         </div>
       </div>
 
@@ -729,9 +890,9 @@ export function AppointmentsTab() {
                           <Button variant="outline" size="sm">
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                          <Button variant="outline" size="sm" onClick={() => handlePrintAppointment(appointment)}>
-                            <Printer className="h-4 w-4" />
-                          </Button>
+                          <PrintButton 
+                            appointment={appointment}
+                          />
                           <Button variant="outline" size="sm" onClick={() => setSelectedAppointmentDetails(appointment)}>
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -745,8 +906,8 @@ export function AppointmentsTab() {
           </div>
         </TabsContent>
 
-        <TabsContent value="calendar">
-          <div className="bg-white p-6 rounded-lg border shadow-sm">
+        <TabsContent value="calendar" className="h-[calc(100vh-120px)]">
+          <div className="bg-white p-6 rounded-lg border shadow-sm h-full grid">
             <Calendar
               mode="single"
               selected={selectedDate}
@@ -757,10 +918,45 @@ export function AppointmentsTab() {
                 }
               }}
               locale={ptBR}
-              className="w-full max-w-[400px]"
+              className="w-full"
+              classNames={{
+                months: "w-full grid",
+                month: "w-full",
+                table: "w-full border-collapse",
+                head_row: "grid grid-cols-7",
+                head_cell: "text-muted-foreground font-normal text-sm p-2 text-center",
+                row: "grid grid-cols-7",
+                cell: "h-[130px] border border-gray-100 overflow-hidden",
+                day: "h-full",
+                day_selected: "bg-primary text-primary-foreground",
+                day_today: "bg-accent text-accent-foreground",
+              }}
               components={{
                 IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
                 IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
+                DayContent: (props) => {
+                  const date = props.date
+                  const day = format(date, 'yyyy-MM-dd')
+                  const dayNumber = format(date, 'd')
+                  const appointmentsForDay = appointmentsByDay[day] || []
+
+                  return (
+                    <div className="h-full flex flex-col">
+                      <div className="text-sm p-1">{dayNumber}</div>
+                      <div className="flex-1 overflow-y-auto p-1 space-y-1">
+                        {appointmentsForDay.map((appointment, i) => (
+                          <div 
+                            key={i}
+                            className="text-[11px] p-1 bg-red-50 text-red-800 truncate cursor-pointer hover:bg-red-100"
+                            onClick={() => setSelectedAppointmentDetails(appointment)}
+                          >
+                            {appointment.time_slot} - {appointment.patient_name}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                }
               }}
             />
           </div>
@@ -1121,6 +1317,7 @@ export function AppointmentsTab() {
           </DialogHeader>
           <div className="p-4 space-y-4">
             <div><strong>Paciente:</strong> {selectedAppointmentDetails?.patient_name}</div>
+            <div><strong>Endereço:</strong> {`${selectedAppointmentDetails?.user?.logradouro || '-'}, ${selectedAppointmentDetails?.user?.numero || '-'} - ${selectedAppointmentDetails?.user?.bairro || '-'}, ${selectedAppointmentDetails?.user?.cidade || '-'} - ${selectedAppointmentDetails?.user?.estado || '-'}, CEP: ${selectedAppointmentDetails?.user?.cep || '-'}`}</div>
             <div>
               <strong>Data:</strong> {selectedAppointmentDetails ? format(selectedAppointmentDetails.scheduled_date, 'dd/MM/yyyy') : ''}
             </div>
@@ -1133,6 +1330,14 @@ export function AppointmentsTab() {
               <strong>Valor Total:</strong> R$ {selectedAppointmentDetails?.valor_total.toFixed(2)}
             </div>
             <div><strong>Status:</strong> {selectedAppointmentDetails?.status}</div>
+            
+            <div className="flex justify-end gap-2 pt-4">
+              {selectedAppointmentDetails && (
+                <PrintButton 
+                  appointment={selectedAppointmentDetails}
+                />
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

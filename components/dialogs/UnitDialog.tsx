@@ -61,7 +61,13 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
     horario_fim: ''
   })
 
-  const [cepRanges, setCepRanges] = useState<{ cep_start: string; cep_end: string; id: string }[]>([])
+  const [cepRanges, setCepRanges] = useState<{
+    cep_start: string;
+    cep_end: string;
+    faixa_nao_atende: string[];
+    faixa_nao_atende_text?: string;
+    id: string;
+  }[]>([])
   const [newBlockedCep, setNewBlockedCep] = useState('')
   const [blockedCeps, setBlockedCeps] = useState<string[]>([])
 
@@ -88,7 +94,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
   }
 
   const handleAddCepRange = () => {
-    setCepRanges([...cepRanges, { cep_start: '', cep_end: '', id: Date.now().toString() }])
+    setCepRanges([...cepRanges, { cep_start: '', cep_end: '', faixa_nao_atende: [], id: Date.now().toString() }])
   }
 
   const handleRemoveCepRange = (index: number, id: string) => {
@@ -128,7 +134,8 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
         const formattedRanges = data.map(range => ({
           id: range.id.toString(),
           cep_start: range.cep_inicial,
-          cep_end: range.cep_final
+          cep_end: range.cep_final,
+          faixa_nao_atende: range.faixa_nao_atende || [],
         }))
 
         console.log('CEPs formatados:', formattedRanges)
@@ -232,7 +239,8 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
         const cepsToSave = cepRanges.map(range => ({
           'unidade_id (FK)': unitId,
           cep_inicial: range.cep_start,
-          cep_final: range.cep_end
+          cep_final: range.cep_end,
+          faixa_nao_atende: range.faixa_nao_atende
         }))
         
         console.log('Dados formatados para salvar:', cepsToSave)
@@ -433,7 +441,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
                       <Input
                         value={range.cep_start}
                         onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, '').slice(0, 5)
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 8)
                           const newRanges = [...cepRanges]
                           newRanges[index] = {
                             ...newRanges[index],
@@ -441,8 +449,8 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
                           }
                           setCepRanges(newRanges)
                         }}
-                        maxLength={5}
-                        placeholder="00000"
+                        maxLength={8}
+                        placeholder="00000000"
                       />
                     </div>
                     <div>
@@ -450,7 +458,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
                       <Input
                         value={range.cep_end}
                         onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, '').slice(0, 5)
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 8)
                           const newRanges = [...cepRanges]
                           newRanges[index] = {
                             ...newRanges[index],
@@ -458,8 +466,38 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
                           }
                           setCepRanges(newRanges)
                         }}
-                        maxLength={5}
-                        placeholder="00000"
+                        maxLength={8}
+                        placeholder="00000000"
+                      />
+                    </div>
+                    <div>
+                      <Label>Faixa Não Atende</Label>
+                      <Input
+                        value={range.faixa_nao_atende_text || range.faixa_nao_atende?.join(', ') || ''}
+                        onChange={(e) => {
+                          const newRanges = [...cepRanges]
+                          newRanges[index] = {
+                            ...newRanges[index],
+                            faixa_nao_atende_text: e.target.value
+                          }
+                          setCepRanges(newRanges)
+                        }}
+                        onBlur={(e) => {
+                          const value = e.target.value
+                            .split(',')
+                            .map(num => num.trim())
+                            .filter(num => /^\d{1,3}$/.test(num))
+                            .map(num => num.padStart(3, '0'))
+                          
+                          const newRanges = [...cepRanges]
+                          newRanges[index] = {
+                            ...newRanges[index],
+                            faixa_nao_atende: value,
+                            faixa_nao_atende_text: value.join(', ')
+                          }
+                          setCepRanges(newRanges)
+                        }}
+                        placeholder="Ex: 001, 002, 003"
                       />
                     </div>
                   </div>

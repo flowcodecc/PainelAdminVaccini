@@ -68,22 +68,25 @@ export interface Patient {
 
 export interface Appointment {
   id: number
+  patient_id: string
   patient_name: string
   scheduled_date: Date
   time_slot: string
   status: string
   unit_name: string
-  vaccines: Array<{
-    id: number
-    nome: string
-    preco: number
-  }>
+  unit_id: number
+  vaccines: Vaccine[]
   valor_total: number
-  patient_id?: string
-  unit_id?: number
-  payment_method?: string
-  patient_email?: string
-  patient_phone?: string
+  user: {
+    logradouro: string
+    numero: string
+    bairro: string
+    cidade: string
+    estado: string
+    cep: string
+    email: string
+    celular: string
+  }
 }
 
 export interface Vaccine {
