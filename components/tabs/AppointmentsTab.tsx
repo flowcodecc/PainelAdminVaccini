@@ -15,6 +15,16 @@ import { CirclePlus, Edit, Trash2, ChevronLeft, ChevronRight, Printer, Eye } fro
 import { Unit, Patient, Appointment, UnitSchedule, Vaccine } from '@/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface UnidadeAtende {
   "unidade_id (FK)": number;
@@ -46,6 +56,7 @@ export function AppointmentsTab() {
   const [filterDateRange, setFilterDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined })
   const [selectedAppointmentDetails, setSelectedAppointmentDetails] = useState<Appointment | null>(null)
   const [selectedAppointmentIds, setSelectedAppointmentIds] = useState<number[]>([])
+  const [appointmentToDelete, setAppointmentToDelete] = useState<number | null>(null)
 
   // 🔥 Busca unidades disponíveis
   const fetchUnits = async () => {
@@ -217,28 +228,8 @@ export function AppointmentsTab() {
       const formattedAppointments = await Promise.all(data.map(async appointment => {
         const { data: vaccinesData } = await supabase
           .from('ref_vacinas')
-          .select(`
-            ref_vacinasID,
-            nome,
-            codigo,
-            preco,
-            status,
-            valor_plano,
-            esquema_id,
-            esquema
-          `)
+          .select('ref_vacinasID, nome, preco, codigo, status, valor_plano, esquema_id')
           .in('ref_vacinasID', appointment.vacinas_id || [])
-
-        const vaccines = (vaccinesData || []).map(v => ({
-          ref_vacinasID: v.ref_vacinasID,
-          nome: v.nome,
-          codigo: v.codigo || '',
-          preco: v.preco || 0,
-          status: v.status || true,
-          valor_plano: v.valor_plano || v.preco || 0,
-          esquema_id: v.esquema_id || 0,
-          esquema: v.esquema
-        }))
 
         return {
           id: appointment.id,
@@ -249,17 +240,17 @@ export function AppointmentsTab() {
           status: appointment.status?.nome || 'Pendente',
           unit_name: appointment.unidade?.nome,
           unit_id: appointment.unidade_id,
-          vaccines: vaccines as Vaccine[],
+          vaccines: vaccinesData || [],
           valor_total: appointment.valor_total,
           user: {
-            logradouro: appointment.logradouro || '',
-            numero: appointment.numero || '',
-            bairro: appointment.bairro || '',
-            cidade: appointment.cidade || '',
-            estado: appointment.estado || '',
-            cep: appointment.cep || '',
-            email: appointment.email || '',
-            celular: appointment.celular || ''
+            logradouro: appointment.logradouro,
+            numero: appointment.numero,
+            bairro: appointment.bairro,
+            cidade: appointment.cidade,
+            estado: appointment.estado,
+            cep: appointment.cep,
+            email: appointment.email,
+            celular: appointment.celular
           }
         }
       }))
@@ -482,38 +473,43 @@ export function AppointmentsTab() {
 
   // Função para imprimir múltiplos agendamentos selecionados
   const handleBulkPrint = (appointmentsToPrint: Appointment[]) => {
-    const printWindow = window.open('', '_blank')
+    if (appointmentsToPrint.length === 0) {
+      toast({ title: "Aviso", description: "Nenhum agendamento selecionado para impressão." })
+      return
+    }
+    const printWindow = window.open('', '_blank', 'width=800,height=1000')
     if (printWindow) {
-      const content = appointmentsToPrint.map(appointment => `
-        <div style="page-break-after: always;">
-          <h2>Comprovante de Agendamento</h2>
-          
-          <div style="margin: 20px 0;">
-            <p><strong>Data:</strong> ${format(appointment.scheduled_date, 'dd/MM/yyyy')}</p>
-            <p><strong>Horário:</strong> ${appointment.time_slot}</p>
-            <p><strong>Unidade:</strong> ${appointment.unit_name}</p>
-            <p><strong>Vacinas:</strong> ${appointment.vaccines.map(v => v.nome).join(', ')}</p>
-            <p><strong>Valor Total:</strong> R$ ${appointment.valor_total.toFixed(2)}</p>
-            <p><strong>Status:</strong> ${appointment.status}</p>
-          </div>
-        </div>
-      `).join('')
-
-      printWindow.document.write(`
+      let htmlContent = `
         <html>
           <head>
-            <title>Comprovantes de Agendamento</title>
+            <title>Impressão de Agendamentos</title>
             <style>
               body { font-family: Arial, sans-serif; padding: 20px; }
-              h2 { text-align: center; margin-bottom: 20px; }
+              .appointment { margin-bottom: 20px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+              .appointment h2 { margin: 0; }
             </style>
           </head>
           <body>
-            ${content}
-            <script>window.print(); window.close();</script>
-          </body>
-        </html>
-      `)
+    `
+      appointmentsToPrint.forEach(appt => {
+        htmlContent += `
+          <div class="appointment">
+            <h2>Agendamento - ${appt.patient_name}</h2>
+            <div><strong>Data:</strong> ${format(appt.scheduled_date, 'dd/MM/yyyy')}</div>
+            <div><strong>Horário:</strong> ${appt.time_slot}</div>
+            <div><strong>Unidade:</strong> ${appt.unit_name}</div>
+            <div><strong>Vacinas:</strong> ${appt.vaccines.map(v => v.nome).join(', ')}</div>
+            <div><strong>Valor:</strong> R$ ${appt.valor_total.toFixed(2)}</div>
+            <div><strong>Status:</strong> ${appt.status}</div>
+          </div>
+        `
+      })
+      htmlContent += `</body></html>`
+      printWindow.document.write(htmlContent)
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
+      printWindow.close()
     }
   }
 
@@ -656,7 +652,6 @@ export function AppointmentsTab() {
           
           <h3>Dados do Paciente</h3>
           <p><strong>Paciente:</strong> ${appointment.patient_name}</p>
-          <p><strong>Data de Nascimento:</strong> -</p>
           <p><strong>Endereço:</strong> ${appointment.user.logradouro}, ${appointment.user.numero} - ${appointment.user.bairro}, ${appointment.user.cidade} - ${appointment.user.estado}, CEP: ${appointment.user.cep}</p>
           <p><strong>Email:</strong> ${appointment.user.email}</p>
           <p><strong>Telefone:</strong> ${appointment.user.celular}</p>
@@ -700,6 +695,43 @@ export function AppointmentsTab() {
         </html>
       `)
     }
+  }
+
+  const handleDeleteAppointment = async (appointmentId: number) => {
+    try {
+      const { error } = await supabase
+        .from('agendamento')
+        .delete()
+        .eq('id', appointmentId)
+
+      if (error) throw error
+
+      toast({
+        title: "Sucesso",
+        description: "Agendamento excluído com sucesso"
+      })
+
+      // Atualiza a lista de agendamentos
+      await fetchAppointments()
+    } catch (error) {
+      console.error('Erro ao excluir:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao excluir agendamento"
+      })
+    }
+  }
+
+  const handleEditAppointment = (appointment: Appointment) => {
+    // Preenche os estados com os dados do agendamento
+    setSelectedPatient(appointment.patient_id)
+    setSelectedUnit(appointment.unit_id)
+    setSelectedDate(appointment.scheduled_date)
+    setSelectedTimeSlot(parseInt(appointment.time_slot))
+    // ... outros estados necessários
+    
+    // Abre a aba de novo agendamento
+    setActiveTab("new")
   }
 
   return (
@@ -904,16 +936,26 @@ export function AppointmentsTab() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleEditAppointment(appointment)}
+                          >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button variant="outline" size="sm">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setAppointmentToDelete(appointment.id)}
+                          >
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                          <PrintButton 
-                            appointment={appointment}
-                          />
-                          <Button variant="outline" size="sm" onClick={() => setSelectedAppointmentDetails(appointment)}>
+                          <PrintButton appointment={appointment} />
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => setSelectedAppointmentDetails(appointment)}
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
                         </div>
@@ -946,8 +988,8 @@ export function AppointmentsTab() {
                 head_row: "grid grid-cols-7",
                 head_cell: "text-muted-foreground font-normal text-sm p-2 text-center",
                 row: "grid grid-cols-7",
-                cell: "h-[130px] border border-gray-100 overflow-hidden",
-                day: "h-full",
+                cell: "min-h-[100px] border border-gray-100 relative",
+                day: "h-full p-2",
                 day_selected: "bg-primary text-primary-foreground",
                 day_today: "bg-accent text-accent-foreground",
               }}
@@ -959,21 +1001,19 @@ export function AppointmentsTab() {
                   const day = format(date, 'yyyy-MM-dd')
                   const dayNumber = format(date, 'd')
                   const appointmentsForDay = appointmentsByDay[day] || []
-
+                  
                   return (
                     <div className="h-full flex flex-col">
-                      <div className="text-sm p-1">{dayNumber}</div>
-                      <div className="flex-1 overflow-y-auto p-1 space-y-1">
-                        {appointmentsForDay.map((appointment, i) => (
-                          <div 
-                            key={i}
-                            className="text-[11px] p-1 bg-red-50 text-red-800 truncate cursor-pointer hover:bg-red-100"
-                            onClick={() => setSelectedAppointmentDetails(appointment)}
-                          >
-                            {appointment.time_slot} - {appointment.patient_name}
-                          </div>
-                        ))}
-                      </div>
+                      <div className="text-sm mb-1">{dayNumber}</div>
+                      {appointmentsForDay.map((appointment, i) => (
+                        <div 
+                          key={i}
+                          className="text-[11px] text-blue-600 truncate cursor-pointer"
+                          onClick={() => setSelectedAppointmentDetails(appointment)}
+                        >
+                          {appointment.time_slot} - {appointment.patient_name}
+                        </div>
+                      ))}
                     </div>
                   )
                 }
@@ -1361,6 +1401,31 @@ export function AppointmentsTab() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={appointmentToDelete !== null} onOpenChange={() => setAppointmentToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Agendamento</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir este agendamento? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (appointmentToDelete) {
+                  handleDeleteAppointment(appointmentToDelete)
+                  setAppointmentToDelete(null)
+                }
+              }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

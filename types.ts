@@ -92,11 +92,11 @@ export interface Appointment {
 export interface Vaccine {
   ref_vacinasID: number
   nome: string
-  codigo: string
   preco: number
-  status: boolean
-  valor_plano: number
-  esquema_id: number
+  codigo?: string
+  status?: boolean
+  valor_plano?: number
+  esquema_id?: number
   esquema?: VaccineScheme
 }
 
