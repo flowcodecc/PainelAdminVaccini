@@ -8,7 +8,7 @@ import { User as UserType, Unit, NurseView } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { NurseDialog } from '@/components/dialogs/NurseDialog'
 import { toast } from '@/components/ui/use-toast'
-import { DeleteAlertDialog } from '@/components/ui/alert-dialog'
+import { DeleteAlertDialog } from '@/components/ui/delete-alert-dialog'
 import { useUser } from '@/contexts/UserContext'
 
 export function NursesTab() {
@@ -183,10 +183,10 @@ export function NursesTab() {
       />
 
       <DeleteAlertDialog
-        isOpen={deleteDialogOpen}
-        onClose={() => {
-          setDeleteDialogOpen(false)
-          setNurseToDelete(null)
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open)
+          if (!open) setNurseToDelete(null)
         }}
         onConfirm={() => {
           if (nurseToDelete) {

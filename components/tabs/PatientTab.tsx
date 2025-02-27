@@ -669,10 +669,10 @@ export function PatientTab() {
         </Tabs>
 
         <DeleteAlertDialog
-          isOpen={deleteDialogOpen}
-          onClose={() => {
-            setDeleteDialogOpen(false)
-            setPatientToDelete(null)
+          open={deleteDialogOpen}
+          onOpenChange={(open) => {
+            setDeleteDialogOpen(open)
+            if (!open) setPatientToDelete(null)
           }}
           onConfirm={() => {
             if (patientToDelete) {

@@ -193,10 +193,10 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
       />
 
       <DeleteAlertDialog
-        isOpen={deleteDialogOpen}
-        onClose={() => {
-          setDeleteDialogOpen(false)
-          setVaccineToDelete(null)
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open)
+          if (!open) setVaccineToDelete(null)
         }}
         onConfirm={() => {
           if (vaccineToDelete) {

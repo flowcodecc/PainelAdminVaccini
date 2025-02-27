@@ -366,10 +366,10 @@ export function ProtecaoVacinasTab() {
       </Dialog>
 
       <DeleteAlertDialog
-        isOpen={deleteDialogOpen}
-        onClose={() => {
-          setDeleteDialogOpen(false)
-          setProtecaoToDelete(null)
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open)
+          if (!open) setProtecaoToDelete(null)
         }}
         onConfirm={() => {
           if (protecaoToDelete) {
