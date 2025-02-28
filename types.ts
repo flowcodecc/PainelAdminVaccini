@@ -77,15 +77,18 @@ export interface Appointment {
   unit_id: number
   vaccines: Vaccine[]
   valor_total: number
-  user: {
-    logradouro: string
-    numero: string
+  forma_pagamento: string
+  patient_details: {
+    email: string
+    celular: string
+    endereco: string
     bairro: string
     cidade: string
     estado: string
     cep: string
-    email: string
-    celular: string
+    nascimento: string
+    sexo: string
+    plano_saude: string | null
   }
 }
 

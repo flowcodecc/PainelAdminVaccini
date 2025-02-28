@@ -131,8 +131,6 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
             <TableHead>Nome</TableHead>
             <TableHead>Preço</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead>Valor do Plano</TableHead>
-            <TableHead>Doses</TableHead>
             <TableHead className="w-[50px]"></TableHead>
           </TableRow>
         </TableHeader>
@@ -142,15 +140,6 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
               <TableCell>{vaccine.vacina_nome}</TableCell>
               <TableCell>R$ {vaccine.preco.toFixed(2)}</TableCell>
               <TableCell>{vaccine.status}</TableCell>
-              <TableCell>
-                {vaccine.valor_plano 
-                  ? `R$ ${vaccine.valor_plano.toFixed(2)}` 
-                  : 'Não aplicável'
-                }
-              </TableCell>
-              <TableCell>
-                {vaccine.total_doses > 0 ? `${vaccine.total_doses} doses` : 'Não'}
-              </TableCell>
               <TableCell>
                 <div className="flex gap-2">
                   <Button

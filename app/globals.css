@@ -119,3 +119,88 @@
   }
 }
 
+.calendar-container {
+  .rdp {
+    --rdp-cell-size: 40px;
+    --rdp-accent-color: var(--vaccini-primary);
+    --rdp-background-color: #e5e7eb;
+    margin: 0;
+    width: 100%;
+  }
+
+  .rdp-months {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .rdp-month {
+    background-color: white;
+    border-radius: 6px;
+    width: 100%;
+  }
+
+  .rdp-caption {
+    padding: 0 1rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .rdp-nav {
+    white-space: nowrap;
+  }
+
+  .rdp-table {
+    width: 100%;
+    margin: 0;
+  }
+
+  .rdp-cell {
+    height: 40px;
+    width: 40px;
+    text-align: center;
+    padding: 0;
+  }
+
+  .rdp-head_cell {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #6b7280;
+    text-align: center;
+    padding: 0;
+    width: calc(100% / 7);
+  }
+
+  .rdp-day {
+    width: 40px;
+    height: 40px;
+    border-radius: 9999px;
+    transition: all 0.2s;
+    margin: 0 auto;
+
+    &:hover:not([disabled]) {
+      background-color: var(--rdp-background-color);
+    }
+
+    &[disabled] {
+      opacity: 0.5;
+    }
+  }
+
+  .rdp-day_selected {
+    background-color: var(--vaccini-primary) !important;
+    color: white;
+    font-weight: 500;
+
+    &:hover {
+      background-color: var(--vaccini-primary) !important;
+    }
+  }
+
+  .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+    background-color: var(--rdp-background-color);
+  }
+}
+

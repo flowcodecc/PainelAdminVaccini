@@ -12,25 +12,45 @@ import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { CirclePlus, Edit, Trash2, ChevronLeft, ChevronRight, Printer, Eye } from "lucide-react"
-import { Unit, Patient, Appointment, UnitSchedule, Vaccine } from '@/types'
+import { Unit, Patient, UnitSchedule, Vaccine } from '@/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog"
 
-interface UnidadeAtende {
-  "unidade_id (FK)": number;
-  unidade: {
-    nome: string;
-  };
+interface Appointment {
+  id: number
+  patient_id: string
+  patient_name: string
+  scheduled_date: Date
+  time_slot: string
+  status: string
+  unit_name: string
+  unit_id: number
+  vaccines: Vaccine[]
+  valor_total: number
+  forma_pagamento: string
+  user: {
+    logradouro: string
+    numero: string
+    bairro: string
+    cidade: string
+    estado: string
+    cep: string
+    email: string
+    celular: string
+  }
+  patient_details: {
+    nascimento: string
+    sexo: string
+    endereco: string
+    bairro: string
+    cidade: string
+    estado: string
+    cep: string
+    email: string
+    celular: string
+    plano_saude?: string
+  }
 }
 
 export function AppointmentsTab() {
@@ -56,7 +76,9 @@ export function AppointmentsTab() {
   const [filterDateRange, setFilterDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined })
   const [selectedAppointmentDetails, setSelectedAppointmentDetails] = useState<Appointment | null>(null)
   const [selectedAppointmentIds, setSelectedAppointmentIds] = useState<number[]>([])
+  const [hasSchedules, setHasSchedules] = useState<boolean>(false)
   const [appointmentToDelete, setAppointmentToDelete] = useState<number | null>(null)
+  const [currentMonth, setCurrentMonth] = useState(new Date())
 
   // 🔥 Busca unidades disponíveis
   const fetchUnits = async () => {
@@ -118,6 +140,42 @@ export function AppointmentsTab() {
 
       const dayOfWeek = diasSemana[date.getDay()]
       
+      console.log('Buscando horários:', {
+        unit_id,
+        date: format(date, 'dd/MM/yyyy'),
+        dayOfWeek
+      })
+
+      // Primeiro, verifica se a unidade tem horários configurados
+      const { data: allSchedules, error: scheduleError } = await supabase
+        .from('unit_schedules')
+        .select('*')
+        .eq('unit_id', unit_id)
+
+      if (scheduleError) {
+        console.error('Erro ao verificar horários da unidade:', scheduleError)
+        toast({
+          title: "Erro",
+          description: "Erro ao buscar horários"
+        })
+        setAvailableTimeSlots([])
+        return
+      }
+
+      // Se não houver nenhum horário configurado para a unidade
+      if (!allSchedules || allSchedules.length === 0) {
+        console.log('Unidade não possui horários configurados')
+        toast({
+          title: "Aviso",
+          description: "Esta unidade não possui horários configurados",
+          duration: 4000
+        })
+        setAvailableTimeSlots([])
+        setSelectedTimeSlot(0)
+        return
+      }
+
+      // Busca horários para o dia específico
       const { data: schedules, error } = await supabase
         .from('unit_schedules')
         .select('*')
@@ -125,6 +183,7 @@ export function AppointmentsTab() {
         .eq('dia_da_semana', dayOfWeek)
 
       if (error) {
+        console.error('Erro ao buscar horários:', error)
         toast({
           title: "Erro",
           description: "Erro ao buscar horários"
@@ -134,6 +193,7 @@ export function AppointmentsTab() {
       }
 
       if (!schedules || schedules.length === 0) {
+        console.log('Nenhum horário encontrado para este dia')
         toast({
           title: "Aviso",
           description: "Nenhum horário de atendimento para esse dia da semana",
@@ -144,9 +204,31 @@ export function AppointmentsTab() {
         return
       }
 
-      setAvailableTimeSlots(schedules)
+      // Verifica agendamentos existentes
+      const formattedDate = format(date, 'yyyy-MM-dd')
+      const { data: existingAppointments, error: appointmentsError } = await supabase
+        .from('agendamento')
+        .select('horario')
+        .eq('dia', formattedDate)
+        .eq('unidade_id', unit_id)
+        .eq('status_id', 1)
+
+      if (appointmentsError) {
+        console.error('Erro ao verificar agendamentos:', appointmentsError)
+      }
+
+      // Filtra horários já agendados
+      const availableSlots = schedules.filter(slot => {
+        const isSlotTaken = existingAppointments?.some(
+          appt => appt.horario === slot.horario_inicio
+        )
+        return !isSlotTaken
+      })
+
+      console.log('Horários disponíveis:', availableSlots)
+      setAvailableTimeSlots(availableSlots)
     } catch (err) {
-      console.error(err)
+      console.error('Erro ao buscar horários:', err)
       toast({
         title: "Erro",
         description: "Erro ao buscar horários"
@@ -216,44 +298,66 @@ export function AppointmentsTab() {
   const fetchAppointments = async () => {
     try {
       const { data, error } = await supabase
-        .from('vw_agendamentos_com_endereco')
+        .from('vw_agendamentos_com_usuarios')
         .select(`
           *,
           unidade:unidade_id (nome),
-          status:status_id (nome)
+          status:status_id (nome),
+          forma_pagamento:forma_pagamento_id (nome)
         `)
+        .eq('status_id', 1)
+        .order('horario', { ascending: true })
 
       if (error) throw error
 
-      const formattedAppointments = await Promise.all(data.map(async appointment => {
-        const { data: vaccinesData } = await supabase
-          .from('ref_vacinas')
-          .select('ref_vacinasID, nome, preco, codigo, status, valor_plano, esquema_id')
-          .in('ref_vacinasID', appointment.vacinas_id || [])
+      const formattedAppointments = await Promise.all(data
+        .map(async appointment => {
+          const { data: vaccinesData } = await supabase
+            .from('ref_vacinas')
+            .select('ref_vacinasID, nome, preco')
+            .in('ref_vacinasID', appointment.vacinas_id || [])
 
-        return {
-          id: appointment.id,
-          patient_id: appointment.user_id,
-          patient_name: `${appointment.nome} ${appointment.sobrenome || ''}`,
-          scheduled_date: new Date(appointment.dia),
-          time_slot: appointment.horario,
-          status: appointment.status?.nome || 'Pendente',
-          unit_name: appointment.unidade?.nome,
-          unit_id: appointment.unidade_id,
-          vaccines: vaccinesData || [],
-          valor_total: appointment.valor_total,
-          user: {
-            logradouro: appointment.logradouro,
-            numero: appointment.numero,
-            bairro: appointment.bairro,
-            cidade: appointment.cidade,
-            estado: appointment.estado,
-            cep: appointment.cep,
-            email: appointment.email,
-            celular: appointment.celular
+          return {
+            id: appointment.agendamento_id,
+            patient_id: appointment.user_id,
+            patient_name: `${appointment.nome} ${appointment.sobrenome || ''}`.trim(),
+            scheduled_date: new Date(appointment.dia),
+            time_slot: appointment.horario,
+            status: appointment.status?.nome || 'Pendente',
+            unit_name: appointment.unidade?.nome,
+            unit_id: appointment.unidade_id,
+            vaccines: (vaccinesData || []).map(v => ({
+              ref_vacinasID: v.ref_vacinasID,
+              nome: v.nome,
+              preco: v.preco
+            })),
+            valor_total: appointment.valor_total,
+            forma_pagamento: appointment.forma_pagamento?.nome || '-',
+            // Novos campos do paciente
+            patient_details: {
+              email: appointment.email,
+              celular: appointment.celular,
+              endereco: `${appointment.logradouro}, ${appointment.numero}`,
+              bairro: appointment.bairro,
+              cidade: appointment.cidade,
+              estado: appointment.estado,
+              cep: appointment.cep,
+              nascimento: appointment.nascimento,
+              sexo: appointment.sexo,
+              plano_saude: appointment.nome_plano_saude
+            },
+            user: {
+              logradouro: appointment.logradouro,
+              numero: appointment.numero,
+              bairro: appointment.bairro,
+              cidade: appointment.cidade,
+              estado: appointment.estado,
+              cep: appointment.cep,
+              email: appointment.email,
+              celular: appointment.celular
+            }
           }
-        }
-      }))
+        }))
 
       setAppointments(formattedAppointments)
       
@@ -266,7 +370,7 @@ export function AppointmentsTab() {
 
       setAppointmentsByDay(byDay)
     } catch (error) {
-      console.error('Erro ao buscar agendamentos:', error)
+      console.error('Erro:', error)
       toast({
         title: "Erro",
         description: "Erro ao carregar agendamentos"
@@ -274,156 +378,135 @@ export function AppointmentsTab() {
     }
   }
 
-  // Função para validar CEP do paciente e filtrar as unidades que atendem aquele CEP
-  const validatePatientCep = async (patientId: string, unitId: number) => {
-    try {
-      const { data: patient, error } = await supabase
-        .from('user')
-        .select('cep, nome')
-        .eq('id', patientId)
-        .single()
-
-      if (error || !patient?.cep) {
-        toast({
-          title: "Erro",
-          description: "Paciente não possui CEP cadastrado"
-        })
-        return false
-      }
-
-      const patientCep = patient.cep.replace(/\D/g, '')
-
-      const { data: ranges, error: rangesError } = await supabase
-        .from('unidade_ceps_atende')
-        .select('cep_inicial, cep_final')
-        .eq('"unidade_id (FK)"', unitId)
-
-      if (rangesError) {
-        toast({
-          title: "Erro",
-          description: "Erro ao verificar faixas de CEP da unidade"
-        })
-        return false
-      }
-
-      const isInRange = ranges.some(range => {
-        const start = range.cep_inicial.replace(/\D/g, '')
-        const end = range.cep_final.replace(/\D/g, '')
-        return parseInt(patientCep) >= parseInt(start) && parseInt(patientCep) <= parseInt(end)
-      })
-
-      if (!isInRange) {
-        toast({
-          title: "Aviso",
-          description: `O CEP ${patient.cep} não é atendido por esta unidade.`
-        })
-        return false
-      }
-
-      const { data: validUnitIds } = await supabase
-        .from('unidade_ceps_atende')
-        .select('"unidade_id (FK)"')
-        .gte('cep_inicial', patient.cep)
-        .lte('cep_final', patient.cep)
-
-      console.log('CEP do paciente:', patient.cep)
-      console.log('Unidades encontradas:', validUnitIds)
-
-      if (!validUnitIds || validUnitIds.length === 0) {
-        const { data: allRanges } = await supabase
-          .from('unidade_ceps_atende')
-          .select('*')
-        console.log('Todas as faixas:', allRanges)
-        
-        toast({
-          title: "Aviso",
-          description: `Nenhuma unidade atende o CEP ${patient.cep} do paciente ${patient.nome}`,
-          duration: 5000
-        })
-        setUnits([])
-        return
-      }
-
-      const { data: validUnits } = await supabase
-        .from('unidade')
-        .select('*')
-        .eq('status', true)
-        .in('id', validUnitIds.map(u => u['unidade_id (FK)']))
-
-      setUnits(validUnits || [])
-
-      return true
-    } catch (error) {
-      console.error('Erro ao validar CEP:', error)
-      toast({
-        title: "Erro",
-        description: "Erro ao validar CEP do paciente"
-      })
-      return false
-    }
+  // Componente do botão de impressão
+  const PrintButton = ({ appointment }: { appointment: Appointment }) => {
+    return (
+      <div className="relative inline-block">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+              <Printer className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-40" align="end">
+            <div className="flex flex-col gap-1">
+              <Button 
+                variant="ghost" 
+                onClick={() => handlePrintAppointment(appointment, false)}
+                className="justify-start w-full"
+              >
+                Impressão Simples
+              </Button>
+              <Button 
+                variant="ghost" 
+                onClick={() => handlePrintAppointment(appointment, true)}
+                className="justify-start w-full"
+              >
+                Impressão Detalhada
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
+    )
   }
 
   // Função para imprimir os dados de um agendamento individual
   const handlePrintAppointment = async (appointment: Appointment, detailed: boolean = false) => {
     try {
-      // Buscar dados detalhados do paciente se necessário
-      let patientDetails = null
-      if (detailed) {
-        const { data, error } = await supabase
-          .from('user')
-          .select('*')
-          .eq('id', appointment.patient_id)
-          .single()
-        
-        if (error) throw error
-        patientDetails = data
-      }
-
-      const printWindow = window.open('', '_blank', 'width=600,height=800')
+      const printWindow = window.open('', '_blank', 'width=800,height=1000')
       if (printWindow) {
         printWindow.document.write(`
           <html>
             <head>
-              <title>Impressão de Agendamento</title>
+              <title>Comprovante de Agendamento</title>
               <style>
-                body { font-family: Arial, sans-serif; padding: 20px; }
-                h2 { text-align: center; }
-                .detail { margin-bottom: 10px; }
-                .section { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; }
+                body { 
+                  font-family: Arial, sans-serif; 
+                  padding: 20px;
+                  margin: 0;
+                }
+                .header {
+                  background: linear-gradient(45deg, #2563eb, #3b82f6);
+                  color: white;
+                  padding: 20px;
+                  text-align: center;
+                  margin-bottom: 30px;
+                }
+                .content {
+                  max-width: 800px;
+                  margin: 0 auto;
+                  padding: 20px;
+                }
+                .section {
+                  background: white;
+                  border: 1px solid #e5e7eb;
+                  border-radius: 8px;
+                  padding: 20px;
+                  margin-bottom: 20px;
+                  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                }
+                .detail {
+                  margin-bottom: 10px;
+                  display: flex;
+                  justify-content: space-between;
+                }
+                .signature-line {
+                  margin-top: 50px;
+                  border-top: 1px solid #000;
+                  padding-top: 10px;
+                  text-align: center;
+                }
+                @media print {
+                  body { padding: 0; }
+                  .header { background: #3b82f6 !important; -webkit-print-color-adjust: exact; }
+                }
               </style>
             </head>
             <body>
-              <h2>Detalhes do Agendamento</h2>
-              ${detailed ? `
-                <div class="section">
-                  <h3>Dados do Paciente</h3>
-                  <div class="detail"><strong>Nome Completo:</strong> ${patientDetails?.nome} ${patientDetails?.sobrenome || ''}</div>
-                  <div class="detail"><strong>CPF:</strong> ${patientDetails?.cpf || '-'}</div>
-                  <div class="detail"><strong>Data de Nascimento:</strong> ${patientDetails?.data_nascimento ? format(new Date(patientDetails.data_nascimento), 'dd/MM/yyyy') : '-'}</div>
-                  <div class="detail"><strong>Endereço:</strong> ${patientDetails?.endereco || '-'}</div>
-                  <div class="detail"><strong>Email:</strong> ${patientDetails?.email || '-'}</div>
-                  <div class="detail"><strong>Telefone:</strong> ${patientDetails?.telefone || '-'}</div>
-                </div>
-              ` : ''}
-              <div class="section">
-                <h3>Dados do Agendamento</h3>
-                <div class="detail"><strong>Data:</strong> ${format(appointment.scheduled_date, 'dd/MM/yyyy')}</div>
-                <div class="detail"><strong>Horário:</strong> ${appointment.time_slot}</div>
-                <div class="detail"><strong>Unidade:</strong> ${appointment.unit_name}</div>
+              <div class="header">
+                <h1>VACCINI</h1>
+                <p>Comprovante de Agendamento ${detailed ? '- Detalhado' : ''}</p>
               </div>
-              <div class="section">
-                <h3>Vacinas</h3>
-                ${appointment.vaccines.map(v => `
-                  <div class="detail">
-                    <strong>${v.nome}</strong> - R$ ${v.preco.toFixed(2)}
+              <div class="content">
+                ${detailed ? `
+                  <div class="section">
+                    <h3>Dados do Paciente</h3>
+                    <div class="detail"><strong>Nome Completo:</strong> ${appointment.patient_name}</div>
+                    <div class="detail"><strong>Endereço:</strong> ${appointment.user.logradouro}, ${appointment.user.numero}</div>
+                    <div class="detail"><strong>Bairro:</strong> ${appointment.user.bairro}</div>
+                    <div class="detail"><strong>Cidade/Estado:</strong> ${appointment.user.cidade}/${appointment.user.estado}</div>
+                    <div class="detail"><strong>CEP:</strong> ${appointment.user.cep}</div>
+                    <div class="detail"><strong>Email:</strong> ${appointment.user.email || '-'}</div>
+                    <div class="detail"><strong>Celular:</strong> ${appointment.user.celular || '-'}</div>
                   </div>
-                `).join('')}
-                <div class="detail" style="margin-top: 10px; font-weight: bold;">
-                  <strong>Valor Total:</strong> R$ ${appointment.valor_total.toFixed(2)}
+                ` : ''}
+                <div class="section">
+                  <h3>Dados do Agendamento</h3>
+                  <div class="detail"><strong>Data:</strong> ${format(appointment.scheduled_date, 'dd/MM/yyyy')}</div>
+                  <div class="detail"><strong>Horário:</strong> ${appointment.time_slot}</div>
+                  <div class="detail"><strong>Unidade:</strong> ${appointment.unit_name}</div>
                 </div>
-              </div>
-              <div class="section">
-                <div class="detail"><strong>Status:</strong> ${appointment.status}</div>
+                <div class="section">
+                  <h3>Vacinas</h3>
+                  ${appointment.vaccines.map(v => `
+                    <div class="detail">
+                      <span>${v.nome}</span>
+                      <span>R$ ${v.preco.toFixed(2)}</span>
+                    </div>
+                  `).join('')}
+                  <div class="detail" style="margin-top: 15px; font-weight: bold;">
+                    <span>Total:</span>
+                    <span>R$ ${appointment.valor_total.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div class="signature-line">
+                  <p>_____________________________________________</p>
+                  <p>Assinatura do Responsável</p>
+                  <p style="font-size: 12px; color: #666; margin-top: 20px;">
+                    Apresente este comprovante na unidade no dia do seu agendamento
+                  </p>
+                </div>
               </div>
             </body>
           </html>
@@ -442,74 +525,125 @@ export function AppointmentsTab() {
     }
   }
 
-  // Atualizar o botão de impressão para mostrar as opções
-  const PrintButton = ({ appointment }: { appointment: Appointment }) => {
-    return (
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button variant="outline" size="sm">
-            <Printer className="h-4 w-4" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-40">
-          <div className="flex flex-col gap-1">
-            <Button 
-              variant="ghost" 
-              onClick={() => handleBulkPrint([appointment])}
-            >
-              Impressão Simples
-            </Button>
-            <Button 
-              variant="ghost" 
-              onClick={() => handlePrintMultiple([appointment])}
-            >
-              Impressão Detalhada
-            </Button>
-          </div>
-        </PopoverContent>
-      </Popover>
-    )
-  }
-
   // Função para imprimir múltiplos agendamentos selecionados
-  const handleBulkPrint = (appointmentsToPrint: Appointment[]) => {
+  const handleBulkPrint = async (detailed: boolean = false) => {
+    const appointmentsToPrint = appointments.filter(appt => selectedAppointmentIds.includes(appt.id))
     if (appointmentsToPrint.length === 0) {
       toast({ title: "Aviso", description: "Nenhum agendamento selecionado para impressão." })
       return
     }
-    const printWindow = window.open('', '_blank', 'width=800,height=1000')
-    if (printWindow) {
-      let htmlContent = `
-        <html>
-          <head>
-            <title>Impressão de Agendamentos</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              .appointment { margin-bottom: 20px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
-              .appointment h2 { margin: 0; }
-            </style>
-          </head>
-          <body>
-    `
-      appointmentsToPrint.forEach(appt => {
-        htmlContent += `
-          <div class="appointment">
-            <h2>Agendamento - ${appt.patient_name}</h2>
-            <div><strong>Data:</strong> ${format(appt.scheduled_date, 'dd/MM/yyyy')}</div>
-            <div><strong>Horário:</strong> ${appt.time_slot}</div>
-            <div><strong>Unidade:</strong> ${appt.unit_name}</div>
-            <div><strong>Vacinas:</strong> ${appt.vaccines.map(v => v.nome).join(', ')}</div>
-            <div><strong>Valor:</strong> R$ ${appt.valor_total.toFixed(2)}</div>
-            <div><strong>Status:</strong> ${appt.status}</div>
-          </div>
+
+    try {
+      const printWindow = window.open('', '_blank', 'width=800,height=1000')
+      if (printWindow) {
+        let htmlContent = `
+          <html>
+            <head>
+              <title>Impressão de Agendamentos</title>
+              <style>
+                body { 
+                  font-family: Arial, sans-serif; 
+                  padding: 20px; 
+                  margin: 0;
+                }
+                .appointment { 
+                  margin-bottom: 30px; 
+                  border-bottom: 1px solid #ccc; 
+                  padding-bottom: 20px;
+                  page-break-inside: avoid;
+                }
+                .appointment:last-child {
+                  border-bottom: none;
+                }
+                h1, h2, h3 { 
+                  margin: 0 0 15px 0; 
+                }
+                .section { 
+                  margin-top: 15px;
+                  page-break-inside: avoid;
+                }
+                .detail { 
+                  margin-bottom: 5px;
+                  line-height: 1.4;
+                }
+                @media print {
+                  body { 
+                    margin: 0; 
+                    padding: 20px;
+                  }
+                  .appointment {
+                    page-break-after: always;
+                  }
+                  .appointment:last-child {
+                    page-break-after: avoid;
+                  }
+                }
+              </style>
+            </head>
+            <body>
+              <h1 style="text-align: center; margin-bottom: 30px;">Lista de Agendamentos</h1>
         `
+
+        for (const appt of appointmentsToPrint) {
+          htmlContent += `
+            <div class="appointment">
+              <h2>Agendamento - ${appt.patient_name}</h2>
+              
+              ${detailed ? `
+                <div class="section">
+                  <h3>Dados do Paciente</h3>
+                  <div class="detail"><strong>Nome Completo:</strong> ${appt.patient_name}</div>
+                  <div class="detail"><strong>Endereço:</strong> ${appt.user.logradouro}, ${appt.user.numero}</div>
+                  <div class="detail"><strong>Bairro:</strong> ${appt.user.bairro}</div>
+                  <div class="detail"><strong>Cidade/Estado:</strong> ${appt.user.cidade}/${appt.user.estado}</div>
+                  <div class="detail"><strong>CEP:</strong> ${appt.user.cep}</div>
+                  <div class="detail"><strong>Email:</strong> ${appt.user.email || '-'}</div>
+                  <div class="detail"><strong>Celular:</strong> ${appt.user.celular || '-'}</div>
+                </div>
+              ` : ''}
+
+              <div class="section">
+                <h3>Dados do Agendamento</h3>
+                <div class="detail"><strong>Data:</strong> ${format(new Date(appt.scheduled_date), 'dd/MM/yyyy', { locale: ptBR })}</div>
+                <div class="detail"><strong>Horário:</strong> ${appt.time_slot}</div>
+                <div class="detail"><strong>Unidade:</strong> ${appt.unit_name}</div>
+                <div class="detail"><strong>Forma de Pagamento:</strong> ${appt.forma_pagamento}</div>
+              </div>
+
+              <div class="section">
+                <h3>Vacinas</h3>
+                ${appt.vaccines.map(v => `
+                  <div class="detail">• ${v.nome} - R$ ${v.preco.toFixed(2)}</div>
+                `).join('')}
+                <div class="detail" style="margin-top: 10px; font-weight: bold;">
+                  <strong>Valor Total:</strong> R$ ${appt.valor_total.toFixed(2)}
+                </div>
+              </div>
+
+              <div class="section" style="margin-top: 50px; text-align: center;">
+                <p style="border-top: 1px solid #000; width: 300px; margin: 20px auto; padding-top: 10px;">
+                  Assinatura do Responsável
+                </p>
+              </div>
+            </div>
+          `
+        }
+
+        htmlContent += `</body></html>`
+        printWindow.document.write(htmlContent)
+        printWindow.document.close()
+        setTimeout(() => {
+          printWindow.focus()
+          printWindow.print()
+          printWindow.close()
+        }, 500)
+      }
+    } catch (error) {
+      console.error('Erro ao imprimir:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao gerar impressão em lote"
       })
-      htmlContent += `</body></html>`
-      printWindow.document.write(htmlContent)
-      printWindow.document.close()
-      printWindow.focus()
-      printWindow.print()
-      printWindow.close()
     }
   }
 
@@ -529,6 +663,92 @@ export function AppointmentsTab() {
     } else {
       setSelectedAppointmentIds(filteredAppointments.map(appt => appt.id))
     }
+  }
+
+  // Função para verificar se a unidade tem horários configurados
+  const checkUnitSchedules = async (unit_id: number) => {
+    try {
+      const { data: schedules, error } = await supabase
+        .from('unit_schedules')
+        .select('*')
+        .eq('unit_id', unit_id)
+
+      if (error) {
+        console.error('Erro ao verificar horários:', error)
+        toast({
+          title: "Erro",
+          description: "Erro ao verificar horários da unidade"
+        })
+        setHasSchedules(false)
+        return false
+      }
+
+      const hasConfiguredSchedules = schedules && schedules.length > 0
+      setHasSchedules(hasConfiguredSchedules)
+
+      if (!hasConfiguredSchedules) {
+        toast({
+          title: "Aviso",
+          description: "Esta unidade não possui horários de atendimento configurados",
+          duration: 4000
+        })
+      }
+
+      return hasConfiguredSchedules
+    } catch (err) {
+      console.error('Erro:', err)
+      toast({
+        title: "Erro",
+        description: "Erro ao verificar horários da unidade"
+      })
+      setHasSchedules(false)
+      return false
+    }
+  }
+
+  const handlePreviousMonth = () => {
+    setCurrentMonth(prevMonth => {
+      const newMonth = new Date(prevMonth)
+      newMonth.setMonth(newMonth.getMonth() - 1)
+      return newMonth
+    })
+  }
+
+  const handleNextMonth = () => {
+    setCurrentMonth(prevMonth => {
+      const newMonth = new Date(prevMonth)
+      newMonth.setMonth(newMonth.getMonth() + 1)
+      return newMonth
+    })
+  }
+
+  const getDaysInMonth = (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth(), 1)
+    const days = []
+    const startDay = start.getDay()
+
+    // Adiciona dias do mês anterior para completar a primeira semana
+    for (let i = 0; i < startDay; i++) {
+      const prevDate = new Date(start)
+      prevDate.setDate(i - startDay + 1)
+      days.push({ date: prevDate, isCurrentMonth: false })
+    }
+
+    // Adiciona todos os dias do mês atual
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
+    for (let i = 1; i <= lastDay; i++) {
+      const currentDate = new Date(date.getFullYear(), date.getMonth(), i)
+      days.push({ date: currentDate, isCurrentMonth: true })
+    }
+
+    // Adiciona dias do próximo mês para completar a última semana
+    const remainingDays = 42 - days.length // 6 semanas * 7 dias = 42
+    for (let i = 1; i <= remainingDays; i++) {
+      const nextDate = new Date(date.getFullYear(), date.getMonth() + 1, i)
+      days.push({ date: nextDate, isCurrentMonth: false })
+    }
+
+    return days
   }
 
   useEffect(() => {
@@ -558,7 +778,7 @@ export function AppointmentsTab() {
 
   const handleScheduleAppointment = async () => {
     try {
-      if (!selectedUnit || !selectedDate || !selectedTimeSlot || !selectedPatient || !selectedPaymentMethod || selectedVaccines.length === 0) {
+      if (!selectedUnit || !selectedDate || !selectedTimeSlot || !selectedPatient || !selectedPaymentMethod) {
         toast({
           title: "Erro",
           description: "Preencha todos os campos obrigatórios"
@@ -578,12 +798,12 @@ export function AppointmentsTab() {
         .insert({
           user_id: selectedPatient,
           unidade_id: selectedUnit,
-          vacinas_id: selectedVaccines.map(v => v.vaccineId),
           forma_pagamento_id: selectedPaymentMethod,
-          valor_total: totalValue,
           horario: timeSlot?.horario_inicio,
           dia: selectedDate.toISOString().split('T')[0],
-          status_id: 1
+          status_id: 1,
+          valor_total: totalValue,
+          vacinas_id: selectedVaccines.map(v => v.vaccineId)
         })
         .select()
         .single()
@@ -597,6 +817,7 @@ export function AppointmentsTab() {
         description: "Agendamento realizado com sucesso!"
       })
 
+      // Limpa o formulário
       setSelectedDate(undefined)
       setSelectedTimeSlot(0)
       setSelectedPatient('')
@@ -637,66 +858,6 @@ export function AppointmentsTab() {
     return matches
   })
 
-  // Função para imprimir múltiplos agendamentos
-  const handlePrintMultiple = (appointmentsToPrint: Appointment[]) => {
-    const printWindow = window.open('', '_blank')
-    if (printWindow) {
-      const content = appointmentsToPrint.map(appointment => `
-        <div style="page-break-after: always;">
-          <div class="header">
-            <div class="date">${format(new Date(), 'dd/MM/yyyy, HH:mm')}</div>
-            <h2>Detalhes do Agendamento</h2>
-          </div>
-
-          <div class="divider"></div>
-          
-          <h3>Dados do Paciente</h3>
-          <p><strong>Paciente:</strong> ${appointment.patient_name}</p>
-          <p><strong>Endereço:</strong> ${appointment.user.logradouro}, ${appointment.user.numero} - ${appointment.user.bairro}, ${appointment.user.cidade} - ${appointment.user.estado}, CEP: ${appointment.user.cep}</p>
-          <p><strong>Email:</strong> ${appointment.user.email}</p>
-          <p><strong>Telefone:</strong> ${appointment.user.celular}</p>
-
-          <div class="divider"></div>
-
-          <h3>Dados do Agendamento</h3>
-          <p><strong>Data:</strong> ${format(appointment.scheduled_date, 'dd/MM/yyyy')}</p>
-          <p><strong>Horário:</strong> ${appointment.time_slot}</p>
-          <p><strong>Unidade:</strong> ${appointment.unit_name}</p>
-
-          <div class="divider"></div>
-
-          <h3>Vacinas</h3>
-          <p>${appointment.vaccines.map(v => v.nome).join(', ')} - R$ ${appointment.valor_total.toFixed(2)}</p>
-          <p><strong>Valor Total:</strong> R$ ${appointment.valor_total.toFixed(2)}</p>
-
-          <div class="divider"></div>
-
-          <p><strong>Status:</strong> ${appointment.status}</p>
-        </div>
-      `).join('')
-
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Comprovantes de Agendamento</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              .header { margin-bottom: 20px; }
-              .header .date { text-align: right; font-size: 14px; }
-              h2 { text-align: center; margin: 20px 0; }
-              .divider { border-bottom: 1px solid #000; margin: 20px 0; }
-              @media print { @page { margin: 2cm; } }
-            </style>
-          </head>
-          <body>
-            ${content}
-            <script>window.print(); window.close();</script>
-          </body>
-        </html>
-      `)
-    }
-  }
-
   const handleDeleteAppointment = async (appointmentId: number) => {
     try {
       const { error } = await supabase
@@ -728,7 +889,18 @@ export function AppointmentsTab() {
     setSelectedUnit(appointment.unit_id)
     setSelectedDate(appointment.scheduled_date)
     setSelectedTimeSlot(parseInt(appointment.time_slot))
-    // ... outros estados necessários
+    
+    // Busca o ID da forma de pagamento baseado no nome
+    const paymentMethod = paymentMethods.find(p => p.nome === appointment.forma_pagamento)
+    if (paymentMethod) {
+      setSelectedPaymentMethod(paymentMethod.id)
+    }
+    
+    // Define as vacinas selecionadas
+    setSelectedVaccines(appointment.vaccines.map(v => ({
+      vaccineId: v.ref_vacinasID,
+      dose: 1 // Define dose padrão como 1
+    })))
     
     // Abre a aba de novo agendamento
     setActiveTab("new")
@@ -736,13 +908,17 @@ export function AppointmentsTab() {
 
   return (
     <div className="w-full h-full flex flex-col space-y-6">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold">Agendamentos</h2>
-        <div className="flex gap-2">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-gray-900">Agendamentos</h2>
+        <div className="flex items-center">
+          <Button onClick={() => setActiveTab("new")} className="bg-primary">
+            <CirclePlus className="h-4 w-4 mr-2" />
+            Novo Agendamento
+          </Button>
           {selectedAppointmentIds.length > 0 && (
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline">
+                <Button variant="outline" className="ml-2">
                   <Printer className="h-4 w-4 mr-2" />
                   Imprimir Selecionados
                 </Button>
@@ -751,23 +927,15 @@ export function AppointmentsTab() {
                 <div className="flex flex-col gap-1">
                   <Button 
                     variant="ghost" 
-                    onClick={() => {
-                      const selectedAppointments = appointments.filter(app => 
-                        selectedAppointmentIds.includes(app.id)
-                      )
-                      handleBulkPrint(selectedAppointments)
-                    }}
+                    onClick={() => handleBulkPrint(false)}
+                    className="justify-start"
                   >
                     Impressão Simples
                   </Button>
                   <Button 
                     variant="ghost" 
-                    onClick={() => {
-                      const selectedAppointments = appointments.filter(app => 
-                        selectedAppointmentIds.includes(app.id)
-                      )
-                      handlePrintMultiple(selectedAppointments)
-                    }}
+                    onClick={() => handleBulkPrint(true)}
+                    className="justify-start"
                   >
                     Impressão Detalhada
                   </Button>
@@ -775,10 +943,6 @@ export function AppointmentsTab() {
               </PopoverContent>
             </Popover>
           )}
-          <Button onClick={() => setActiveTab("new")}>
-            <CirclePlus className="h-4 w-4 mr-2" />
-            Novo Agendamento
-          </Button>
         </div>
       </div>
 
@@ -968,57 +1132,57 @@ export function AppointmentsTab() {
           </div>
         </TabsContent>
 
-        <TabsContent value="calendar" className="h-[calc(100vh-120px)]">
-          <div className="bg-white p-6 rounded-lg border shadow-sm h-full grid">
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={(date) => {
-                if (date && selectedUnit) {
-                  setSelectedDate(date)
-                  fetchAvailableTimeSlots(selectedUnit, date)
-                }
-              }}
-              locale={ptBR}
-              className="w-full"
-              classNames={{
-                months: "w-full grid",
-                month: "w-full",
-                table: "w-full border-collapse",
-                head_row: "grid grid-cols-7",
-                head_cell: "text-muted-foreground font-normal text-sm p-2 text-center",
-                row: "grid grid-cols-7",
-                cell: "min-h-[100px] border border-gray-100 relative",
-                day: "h-full p-2",
-                day_selected: "bg-primary text-primary-foreground",
-                day_today: "bg-accent text-accent-foreground",
-              }}
-              components={{
-                IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
-                IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
-                DayContent: (props) => {
-                  const date = props.date
-                  const day = format(date, 'yyyy-MM-dd')
-                  const dayNumber = format(date, 'd')
-                  const appointmentsForDay = appointmentsByDay[day] || []
-                  
-                  return (
-                    <div className="h-full flex flex-col">
-                      <div className="text-sm mb-1">{dayNumber}</div>
-                      {appointmentsForDay.map((appointment, i) => (
-                        <div 
-                          key={i}
-                          className="text-[11px] text-blue-600 truncate cursor-pointer"
-                          onClick={() => setSelectedAppointmentDetails(appointment)}
-                        >
-                          {appointment.time_slot} - {appointment.patient_name}
-                        </div>
-                      ))}
-                    </div>
-                  )
-                }
-              }}
-            />
+        <TabsContent value="calendar">
+          <div className="bg-white p-6 rounded-lg border shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold capitalize">
+                {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
+              </h2>
+              <div className="flex gap-2">
+                <Button variant="outline" size="icon" onClick={handlePreviousMonth}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={handleNextMonth}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-7 gap-4">
+              <div className="text-center text-sm text-gray-500">dom</div>
+              <div className="text-center text-sm text-gray-500">seg</div>
+              <div className="text-center text-sm text-gray-500">ter</div>
+              <div className="text-center text-sm text-gray-500">qua</div>
+              <div className="text-center text-sm text-gray-500">qui</div>
+              <div className="text-center text-sm text-gray-500">sex</div>
+              <div className="text-center text-sm text-gray-500">sab</div>
+
+              {getDaysInMonth(currentMonth).map(({ date, isCurrentMonth }, index) => {
+                const dateStr = format(date, 'yyyy-MM-dd')
+                const appointments = appointmentsByDay[dateStr] || []
+                const isToday = format(new Date(), 'yyyy-MM-dd') === dateStr
+                
+                return (
+                  <div 
+                    key={index} 
+                    className={`min-h-[100px] p-2 border rounded-lg ${
+                      !isCurrentMonth ? 'bg-gray-50 text-gray-400' : ''
+                    } ${isToday ? 'border-primary' : ''}`}
+                  >
+                    <div className="text-sm font-medium mb-2">{date.getDate()}</div>
+                    {appointments.map((appointment) => (
+                      <div 
+                        key={appointment.id}
+                        onClick={() => setSelectedAppointmentDetails(appointment)}
+                        className="text-xs p-1 mb-1 rounded bg-red-100 text-red-800 hover:bg-red-200 cursor-pointer transition-colors"
+                      >
+                        {appointment.time_slot} - {appointment.patient_name}
+                      </div>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </TabsContent>
       </Tabs>
@@ -1044,58 +1208,7 @@ export function AppointmentsTab() {
                   <div>
                     <Label>Paciente</Label>
                     <Select
-                      onValueChange={async (value) => {
-                        // Lógica para selecionar paciente e filtrar unidades pelo CEP
-                        setSelectedPatient(value)
-                        setSelectedUnit(0)
-                        
-                        const { data: patient, error } = await supabase
-                          .from('user')
-                          .select('cep, nome')
-                          .eq('id', value)
-                          .single()
-
-                        if (error || !patient?.cep) {
-                          toast({
-                            title: "Aviso",
-                            description: "Paciente não possui CEP cadastrado"
-                          })
-                          setUnits([])
-                          return
-                        }
-
-                        const { data: validUnitIds } = await supabase
-                          .from('unidade_ceps_atende')
-                          .select('"unidade_id (FK)"')
-                          .gte('cep_inicial', patient.cep)
-                          .lte('cep_final', patient.cep)
-
-                        console.log('CEP do paciente:', patient.cep)
-                        console.log('Unidades encontradas:', validUnitIds)
-
-                        if (!validUnitIds || validUnitIds.length === 0) {
-                          const { data: allRanges } = await supabase
-                            .from('unidade_ceps_atende')
-                            .select('*')
-                          console.log('Todas as faixas:', allRanges)
-                          
-                          toast({
-                            title: "Aviso",
-                            description: `Nenhuma unidade atende o CEP ${patient.cep} do paciente ${patient.nome}`,
-                            duration: 5000
-                          })
-                          setUnits([])
-                          return
-                        }
-
-                        const { data: validUnits } = await supabase
-                          .from('unidade')
-                          .select('*')
-                          .eq('status', true)
-                          .in('id', validUnitIds.map(u => u['unidade_id (FK)']))
-
-                        setUnits(validUnits || [])
-                      }}
+                      onValueChange={setSelectedPatient}
                       value={selectedPatient}
                     >
                       <SelectTrigger>
@@ -1111,184 +1224,210 @@ export function AppointmentsTab() {
                     </Select>
                   </div>
 
-                  {selectedPatient && (
+                  <div>
+                    <Label>Unidade</Label>
+                    <Select 
+                      onValueChange={async (value) => {
+                        const unitId = parseInt(value)
+                        setSelectedUnit(unitId)
+                        setSelectedDate(undefined)
+                        setAvailableTimeSlots([])
+                        setSelectedTimeSlot(0)
+                        
+                        if (unitId > 0) {
+                          const hasConfiguredSchedules = await checkUnitSchedules(unitId)
+                          setHasSchedules(hasConfiguredSchedules)
+                        } else {
+                          setHasSchedules(false)
+                        }
+                      }}
+                      value={selectedUnit.toString()}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione uma unidade" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {units.map((unit) => (
+                          <SelectItem key={unit.id} value={unit.id.toString()}>
+                            {unit.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedUnit > 0 && !hasSchedules && (
+                    <div className="mt-2 text-center py-6 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <p className="text-yellow-800 font-medium">
+                        Atenção
+                      </p>
+                      <p className="text-sm text-yellow-700 mt-1">
+                        Esta unidade não possui horários de atendimento configurados. Entre em contato com o administrador.
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedUnit > 0 && hasSchedules && (
                     <div>
-                      <Label htmlFor="unit">Unidade</Label>
-                      {units.length === 0 ? (
-                        <div className="p-4 text-center border rounded-md bg-gray-50">
-                          <p className="text-gray-500">Nenhuma unidade atende o CEP deste paciente</p>
+                      <Label>Data</Label>
+                      <div className="calendar-container bg-white rounded-lg border shadow-sm p-4">
+                        <Calendar
+                          mode="single"
+                          selected={selectedDate}
+                          onSelect={(date) => {
+                            if (date && selectedUnit) {
+                              setSelectedDate(date)
+                              fetchAvailableTimeSlots(selectedUnit, date)
+                            }
+                          }}
+                          locale={ptBR}
+                          className="w-full"
+                          disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                          initialFocus
+                          fromDate={new Date()}
+                          fixedWeeks
+                          showOutsideDays={false}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedDate && availableTimeSlots.length > 0 && (
+                    <div>
+                      <Label>Horário</Label>
+                      <div className="grid grid-cols-3 gap-2 mt-2">
+                        {availableTimeSlots.map((slot) => (
+                          <div
+                            key={slot.id}
+                            className={`p-3 border rounded cursor-pointer text-center transition-colors
+                              ${selectedTimeSlot === slot.id 
+                                ? 'bg-primary text-white' 
+                                : 'hover:bg-gray-50'}`}
+                            onClick={() => setSelectedTimeSlot(slot.id)}
+                          >
+                            {slot.horario_inicio}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedTimeSlot > 0 && (
+                    <div>
+                      <Label>Forma de Pagamento</Label>
+                      <Select 
+                        onValueChange={(value) => setSelectedPaymentMethod(parseInt(value))}
+                        value={selectedPaymentMethod.toString()}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a forma de pagamento" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {paymentMethods.map((method) => (
+                            <SelectItem key={method.id} value={method.id.toString()}>
+                              {method.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {selectedPaymentMethod > 0 && (
+                    <div>
+                      <Label>Vacinas</Label>
+                      <div className="space-y-4">
+                        {selectedVaccines.map(({ vaccineId, dose }) => {
+                          const vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
+                          return (
+                            <div key={vaccineId} className="flex items-center justify-between p-2 border rounded">
+                              <span>{vaccine?.nome} - {dose}ª Dose</span>
+                              <Button
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => setSelectedVaccines(prev => prev.filter(v => v.vaccineId !== vaccineId))}
+                              >
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
+                          )
+                        })}
+
+                        <div className="flex gap-2">
+                          <Select
+                            value={selectedVaccineId}
+                            onValueChange={(value) => {
+                              setSelectedVaccineId(value)
+                              setSelectedDose(0)
+                            }}
+                          >
+                            <SelectTrigger className="w-[300px]">
+                              <SelectValue placeholder="Selecione uma vacina" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {vaccines
+                                .filter(v => !selectedVaccines.some(sv => sv.vaccineId === v.ref_vacinasID))
+                                .map((vaccine) => (
+                                  <SelectItem key={vaccine.ref_vacinasID} value={vaccine.ref_vacinasID.toString()}>
+                                    {vaccine.nome}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+
+                          {selectedVaccineId && (
+                            <Select
+                              value={selectedDose.toString()}
+                              onValueChange={(value) => setSelectedDose(parseInt(value))}
+                            >
+                              <SelectTrigger className="w-[120px]">
+                                <SelectValue placeholder="Dose" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {[1, 2, 3, 4, 5].map(dose => {
+                                  const vaccine = vaccines.find(v => v.ref_vacinasID === parseInt(selectedVaccineId))
+                                  if (!vaccine?.esquema) return null
+                                  
+                                  const doseKey = `dose_${dose}` as keyof typeof vaccine.esquema
+                                  if (vaccine.esquema[doseKey]) {
+                                    return (
+                                      <SelectItem key={dose} value={dose.toString()}>
+                                        {dose}ª Dose
+                                      </SelectItem>
+                                    )
+                                  }
+                                  return null
+                                }).filter(Boolean)}
+                              </SelectContent>
+                            </Select>
+                          )}
+
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              if (selectedVaccineId && selectedDose > 0) {
+                                setSelectedVaccines(prev => [
+                                  ...prev, 
+                                  { 
+                                    vaccineId: parseInt(selectedVaccineId), 
+                                    dose: selectedDose 
+                                  }
+                                ])
+                                setSelectedVaccineId('')
+                                setSelectedDose(0)
+                              }
+                            }}
+                            disabled={!selectedVaccineId || selectedDose === 0}
+                          >
+                            <CirclePlus className="h-4 w-4 mr-2" />
+                            Adicionar Vacina
+                          </Button>
                         </div>
-                      ) : (
-                        <Select 
-                          onValueChange={(value) => setSelectedUnit(parseInt(value))}
-                          value={selectedUnit.toString()}
-                        >
-                          <SelectTrigger id="unit">
-                            <SelectValue placeholder="Selecione uma unidade" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {units.map((unit) => (
-                              <SelectItem key={unit.id} value={unit.id.toString()}>
-                                {unit.nome}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
-
-              {selectedUnit > 0 && selectedDate && (
-                <div className="bg-white p-6 rounded-lg border shadow-sm">
-                  <h3 className="text-lg font-semibold mb-4">Horário e Pagamento</h3>
-                  
-                  <div className="space-y-4">
-                    {availableTimeSlots.length > 0 ? (
-                      <div>
-                        <Label>Horário Disponível</Label>
-                        <Select
-                          onValueChange={(value) => setSelectedTimeSlot(parseInt(value))}
-                          value={selectedTimeSlot.toString()}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione um horário" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableTimeSlots.map((slot) => (
-                              <SelectItem key={slot.id} value={slot.id.toString()}>
-                                {slot.horario_inicio} - {slot.horario_fim}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ) : (
-                      <div className="text-center py-4">
-                        <p className="text-gray-500">Nenhum horário de atendimento para esse dia da semana</p>
-                      </div>
-                    )}
-
-                    {selectedTimeSlot > 0 && (
-                      <>
-                        <div>
-                          <Label>Forma de Pagamento</Label>
-                          <Select 
-                            onValueChange={(value) => setSelectedPaymentMethod(parseInt(value))}
-                            value={selectedPaymentMethod.toString()}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione a forma de pagamento" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {paymentMethods.map((method) => (
-                                <SelectItem key={method.id} value={method.id.toString()}>
-                                  {method.nome}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {selectedPaymentMethod > 0 && (
-                          <div>
-                            <Label>Vacinas</Label>
-                            <div className="space-y-4">
-                              {selectedVaccines.map(({ vaccineId, dose }) => {
-                                const vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
-                                return (
-                                  <div key={vaccineId} className="flex items-center justify-between p-2 border rounded">
-                                    <span>{vaccine?.nome} - {dose}ª Dose</span>
-                                    <Button
-                                      variant="ghost" 
-                                      size="sm"
-                                      onClick={() => setSelectedVaccines(prev => prev.filter(v => v.vaccineId !== vaccineId))}
-                                    >
-                                      <Trash2 className="h-4 w-4 text-red-500" />
-                                    </Button>
-                                  </div>
-                                )
-                              })}
-
-                              <div className="flex gap-2">
-                                <Select
-                                  value={selectedVaccineId}
-                                  onValueChange={(value) => {
-                                    setSelectedVaccineId(value)
-                                    setSelectedDose(0)
-                                  }}
-                                >
-                                  <SelectTrigger className="w-[300px]">
-                                    <SelectValue placeholder="Selecione uma vacina" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {vaccines
-                                      .filter(v => !selectedVaccines.some(sv => sv.vaccineId === v.ref_vacinasID))
-                                      .map((vaccine) => (
-                                        <SelectItem key={vaccine.ref_vacinasID} value={vaccine.ref_vacinasID.toString()}>
-                                          {vaccine.nome}
-                                        </SelectItem>
-                                      ))}
-                                  </SelectContent>
-                                </Select>
-
-                                {selectedVaccineId && (
-                                  <Select
-                                    value={selectedDose.toString()}
-                                    onValueChange={(value) => setSelectedDose(parseInt(value))}
-                                  >
-                                    <SelectTrigger className="w-[120px]">
-                                      <SelectValue placeholder="Dose" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {[1, 2, 3, 4, 5].map(dose => {
-                                        const vaccine = vaccines.find(v => v.ref_vacinasID === parseInt(selectedVaccineId))
-                                        if (!vaccine?.esquema) return null
-                                        
-                                        const doseKey = `dose_${dose}` as keyof typeof vaccine.esquema
-                                        if (vaccine.esquema[doseKey]) {
-                                          return (
-                                            <SelectItem key={dose} value={dose.toString()}>
-                                              {dose}ª Dose
-                                            </SelectItem>
-                                          )
-                                        }
-                                        return null
-                                      }).filter(Boolean)}
-                                    </SelectContent>
-                                  </Select>
-                                )}
-
-                                <Button
-                                  variant="outline"
-                                  onClick={() => {
-                                    if (selectedVaccineId && selectedDose > 0) {
-                                      setSelectedVaccines(prev => [
-                                        ...prev, 
-                                        { 
-                                          vaccineId: parseInt(selectedVaccineId), 
-                                          dose: selectedDose 
-                                        }
-                                      ])
-                                      setSelectedVaccineId('')
-                                      setSelectedDose(0)
-                                    }
-                                  }}
-                                  disabled={!selectedVaccineId || selectedDose === 0}
-                                >
-                                  <CirclePlus className="h-4 w-4 mr-2" />
-                                  Adicionar Vacina
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
 
               <Button 
                 onClick={handleScheduleAppointment} 
@@ -1371,37 +1510,45 @@ export function AppointmentsTab() {
         open={selectedAppointmentDetails !== null} 
         onOpenChange={(open) => { if (!open) setSelectedAppointmentDetails(null) }}
       >
-        <DialogContent className="max-w-[90%] w-[600px]">
+        <DialogContent className="max-w-[90%] w-[400px]">
           <DialogHeader>
             <DialogTitle>Detalhes do Agendamento</DialogTitle>
           </DialogHeader>
-          <div className="p-4 space-y-4">
-            <div><strong>Paciente:</strong> {selectedAppointmentDetails?.patient_name}</div>
-            <div><strong>Endereço:</strong> {`${selectedAppointmentDetails?.user?.logradouro || '-'}, ${selectedAppointmentDetails?.user?.numero || '-'} - ${selectedAppointmentDetails?.user?.bairro || '-'}, ${selectedAppointmentDetails?.user?.cidade || '-'} - ${selectedAppointmentDetails?.user?.estado || '-'}, CEP: ${selectedAppointmentDetails?.user?.cep || '-'}`}</div>
-            <div>
-              <strong>Data:</strong> {selectedAppointmentDetails ? format(selectedAppointmentDetails.scheduled_date, 'dd/MM/yyyy') : ''}
+          {selectedAppointmentDetails && (
+            <div className="space-y-4">
+              <div>
+                <strong>Paciente:</strong> {selectedAppointmentDetails.patient_name}
+              </div>
+              <div>
+                <strong>Data:</strong> {format(selectedAppointmentDetails.scheduled_date, 'dd/MM/yyyy')}
+              </div>
+              <div>
+                <strong>Horário:</strong> {selectedAppointmentDetails.time_slot}
+              </div>
+              <div>
+                <strong>Unidade:</strong> {selectedAppointmentDetails.unit_name}
+              </div>
+              <div>
+                <strong>Vacinas:</strong> {selectedAppointmentDetails.vaccines.map(v => v.nome).join(', ')}
+              </div>
+              <div>
+                <strong>Valor Total:</strong> R$ {selectedAppointmentDetails.valor_total.toFixed(2)}
+              </div>
+              <div>
+                <strong>Status:</strong> {selectedAppointmentDetails.status}
+              </div>
+              <div>
+                <strong>Endereço:</strong> {`${selectedAppointmentDetails.user.logradouro}, ${selectedAppointmentDetails.user.numero} - ${selectedAppointmentDetails.user.bairro}, ${selectedAppointmentDetails.user.cidade} - ${selectedAppointmentDetails.user.estado}, CEP: ${selectedAppointmentDetails.user.cep}`}
+              </div>
+              <div>
+                <strong>Celular:</strong> {selectedAppointmentDetails.user.celular || '-'}
+              </div>
             </div>
-            <div><strong>Horário:</strong> {selectedAppointmentDetails?.time_slot}</div>
-            <div><strong>Unidade:</strong> {selectedAppointmentDetails?.unit_name}</div>
-            <div>
-              <strong>Vacinas:</strong> {selectedAppointmentDetails?.vaccines.map(v => v.nome).join(', ')}
-            </div>
-            <div>
-              <strong>Valor Total:</strong> R$ {selectedAppointmentDetails?.valor_total.toFixed(2)}
-            </div>
-            <div><strong>Status:</strong> {selectedAppointmentDetails?.status}</div>
-            
-            <div className="flex justify-end gap-2 pt-4">
-              {selectedAppointmentDetails && (
-                <PrintButton 
-                  appointment={selectedAppointmentDetails}
-                />
-              )}
-            </div>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
 
+      {/* Modal de confirmação de exclusão */}
       <AlertDialog open={appointmentToDelete !== null} onOpenChange={() => setAppointmentToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

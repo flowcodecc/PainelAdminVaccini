@@ -2,6 +2,7 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { VaccinesTab } from "@/components/tabs/VaccinesTab"
+import { PlanoVacinacaoTab } from "@/components/tabs/PlanoVacinacaoTab"
 import { useState } from "react"
 
 export default function VacinasPage() {
@@ -17,7 +18,7 @@ export default function VacinasPage() {
         <VaccinesTab />
       </TabsContent>
       <TabsContent value="plano">
-        {/* Conteúdo do plano será implementado depois */}
+        <PlanoVacinacaoTab />
       </TabsContent>
     </Tabs>
   )
