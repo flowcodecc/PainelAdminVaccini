@@ -17,13 +17,13 @@ interface ScheduleDialogProps {
 }
 
 const DAYS = [
-  { name: 'Domingo', value: 'domingo' },
-  { name: 'Segunda', value: 'segunda' },
-  { name: 'Terça', value: 'terca' },
-  { name: 'Quarta', value: 'quarta' },
-  { name: 'Quinta', value: 'quinta' },
-  { name: 'Sexta', value: 'sexta' },
-  { name: 'Sábado', value: 'sabado' }
+  { name: 'Domingo', value: 'Domingo' },
+  { name: 'Segunda', value: 'Segunda' },
+  { name: 'Terça', value: 'Terça' },
+  { name: 'Quarta', value: 'Quarta' },
+  { name: 'Quinta', value: 'Quinta' },
+  { name: 'Sexta', value: 'Sexta' },
+  { name: 'Sábado', value: 'Sábado' }
 ] as const
 
 export function ScheduleDialog({ unit, open, onOpenChange, onSuccess }: ScheduleDialogProps) {
