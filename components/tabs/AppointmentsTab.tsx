@@ -94,6 +94,66 @@ export function AppointmentsTab() {
     setUnits(data || [])
   }
 
+  // 🔥 Verifica unidades que atendem ao CEP do paciente
+  const fetchUnitsForPatient = async (patientId: string) => {
+    try {
+      // Verifica unidades que atendem ao CEP
+      const { data, error } = await supabase
+        .rpc('verifica_unidade_usuario', {
+          user_id: patientId
+        })
+
+      if (error) {
+        console.error('Erro ao verificar unidades para o paciente:', error)
+        toast({
+          title: "Erro",
+          description: "Erro ao verificar unidades disponíveis para o paciente"
+        })
+        setUnits([])
+        return
+      }
+
+      if (!data || data.length === 0) {
+        toast({
+          title: "Aviso",
+          description: "Nenhuma unidade atende ao CEP deste paciente",
+          duration: 4000
+        })
+        setUnits([])
+        return
+      }
+
+      // Extrai os IDs únicos das unidades do resultado
+      const unitIds = Array.from(new Set(data.map((item: { unidade_id: number }) => item.unidade_id)))
+
+      // Busca os detalhes das unidades retornadas
+      const { data: unitsData, error: unitsError } = await supabase
+        .from('unidade')
+        .select('*')
+        .eq('status', true)
+        .in('id', unitIds)
+
+      if (unitsError) {
+        console.error('Erro ao buscar detalhes das unidades:', unitsError)
+        toast({
+          title: "Erro",
+          description: "Erro ao buscar informações das unidades"
+        })
+        setUnits([])
+        return
+      }
+
+      setUnits(unitsData || [])
+    } catch (err) {
+      console.error('Erro:', err)
+      toast({
+        title: "Erro",
+        description: "Erro ao verificar unidades disponíveis"
+      })
+      setUnits([])
+    }
+  }
+
   // 🔥 Busca pacientes (usuários sem role)
   const fetchPatients = async () => {
     try {
@@ -752,12 +812,20 @@ export function AppointmentsTab() {
   }
 
   useEffect(() => {
-    fetchUnits()
     fetchPatients()
     fetchPaymentMethods()
     fetchVaccines()
     fetchAppointments()
   }, [])
+
+  // Atualiza a lista de unidades quando um paciente é selecionado
+  useEffect(() => {
+    if (selectedPatient) {
+      fetchUnitsForPatient(selectedPatient)
+    } else {
+      fetchUnits()
+    }
+  }, [selectedPatient])
 
   useEffect(() => {
     const total = selectedVaccines.reduce((sum, { vaccineId }) => {
@@ -1208,7 +1276,12 @@ export function AppointmentsTab() {
                   <div>
                     <Label>Paciente</Label>
                     <Select
-                      onValueChange={setSelectedPatient}
+                      onValueChange={(value) => {
+                        setSelectedPatient(value)
+                        setSelectedUnit(0) // Reseta a unidade selecionada
+                        setSelectedDate(undefined)
+                        setAvailableTimeSlots([])
+                      }}
                       value={selectedPatient}
                     >
                       <SelectTrigger>
@@ -1242,9 +1315,16 @@ export function AppointmentsTab() {
                         }
                       }}
                       value={selectedUnit.toString()}
+                      disabled={!selectedPatient || units.length === 0}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione uma unidade" />
+                        <SelectValue placeholder={
+                          !selectedPatient 
+                            ? "Selecione um paciente primeiro" 
+                            : units.length === 0 
+                              ? "Nenhuma unidade disponível para este CEP" 
+                              : "Selecione uma unidade"
+                        } />
                       </SelectTrigger>
                       <SelectContent>
                         {units.map((unit) => (
@@ -1254,6 +1334,11 @@ export function AppointmentsTab() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {selectedPatient && units.length === 0 && (
+                      <p className="text-sm text-red-500 mt-1">
+                        Nenhuma unidade atende ao CEP deste paciente
+                      </p>
+                    )}
                   </div>
 
                   {selectedUnit > 0 && !hasSchedules && (

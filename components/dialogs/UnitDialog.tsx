@@ -20,6 +20,14 @@ interface UnitDialogProps {
   healthPlans: HealthPlan[]
 }
 
+interface CepRange {
+  cep_inicial: string;
+  cep_final: string;
+  faixa_excluida: string;
+  id: string;
+  cep_base?: string;
+}
+
 const DAYS = [
   { name: 'Domingo', field: 'domingo' },
   { name: 'Segunda', field: 'segunda_feira' },
@@ -61,13 +69,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
     horario_fim: ''
   })
 
-  const [cepRanges, setCepRanges] = useState<{
-    cep_start: string;
-    cep_end: string;
-    faixa_nao_atende: string[];
-    faixa_nao_atende_text?: string;
-    id: string;
-  }[]>([])
+  const [cepRanges, setCepRanges] = useState<CepRange[]>([])
   const [newBlockedCep, setNewBlockedCep] = useState('')
   const [blockedCeps, setBlockedCeps] = useState<string[]>([])
 
@@ -94,7 +96,13 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
   }
 
   const handleAddCepRange = () => {
-    setCepRanges([...cepRanges, { cep_start: '', cep_end: '', faixa_nao_atende: [], id: Date.now().toString() }])
+    setCepRanges([...cepRanges, { 
+      cep_inicial: '', 
+      cep_final: '', 
+      faixa_excluida: '',
+      cep_base: '',
+      id: Date.now().toString()
+    }])
   }
 
   const handleRemoveCepRange = (index: number, id: string) => {
@@ -118,31 +126,52 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
     try {
       console.log('Buscando CEPs da unidade:', unitId)
       
-      const { data, error } = await supabase
+      // Busca as faixas de CEP que a unidade atende
+      const { data: cepRangesData, error: cepRangesError } = await supabase
         .from('unidade_ceps_atende')
         .select('*')
-        .eq('"unidade_id (FK)"', unitId)
+        .eq('unidade_id', unitId)
 
-      if (error) {
-        console.error('Erro ao buscar CEPs:', error.message)
+      if (cepRangesError) {
+        console.error('Erro ao buscar CEPs:', cepRangesError.message)
         return
       }
 
-      console.log('CEPs encontrados:', data)
+      // Busca as faixas não atendidas
+      const { data: cepsNaoAtendeData, error: cepsNaoAtendeError } = await supabase
+        .from('unidade_ceps_nao_atende')
+        .select('*')
+        .eq('unidade_id', unitId)
 
-      if (data && data.length > 0) {
-        const formattedRanges = data.map(range => ({
+      if (cepsNaoAtendeError) {
+        console.error('Erro ao buscar CEPs não atendidos:', cepsNaoAtendeError.message)
+        return
+      }
+
+      if (cepRangesData) {
+        const formattedRanges = cepRangesData.map(range => ({
           id: range.id.toString(),
-          cep_start: range.cep_inicial,
-          cep_end: range.cep_final,
-          faixa_nao_atende: range.faixa_nao_atende || [],
+          cep_inicial: range.cep_inicial,
+          cep_final: range.cep_final,
+          faixa_excluida: '',
+          cep_base: ''
         }))
+
+        // Adiciona as faixas não atendidas
+        if (cepsNaoAtendeData) {
+          cepsNaoAtendeData.forEach(naoAtende => {
+            formattedRanges.push({
+              id: `nao-atende-${Date.now()}`,
+              cep_inicial: naoAtende.cep_base,
+              cep_final: naoAtende.cep_base,
+              faixa_excluida: naoAtende.faixa_excluida,
+              cep_base: naoAtende.cep_base
+            })
+          })
+        }
 
         console.log('CEPs formatados:', formattedRanges)
         setCepRanges(formattedRanges)
-      } else {
-        console.log('Nenhum CEP cadastrado para esta unidade')
-        setCepRanges([])
       }
     } catch (error) {
       console.error('Erro completo:', error)
@@ -167,7 +196,6 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
 
       // 1. Primeiro salva/atualiza a unidade
       if (newUnit.id) {
-        // Atualiza unidade existente
         const { error } = await supabase
           .from('unidade')
           .update({
@@ -193,18 +221,10 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
         if (error) throw error
         unitId = newUnit.id
 
-        console.log('Deletando CEPs antigos da unidade:', unitId)
-        const { error: deleteError } = await supabase
-          .from('unidade_ceps_atende')
-          .delete()
-          .eq('"unidade_id (FK)"', unitId)
-
-        if (deleteError) {
-          console.error('Erro ao deletar CEPs antigos:', deleteError)
-          throw deleteError
-        }
+        // Deleta os registros antigos
+        await supabase.from('unidade_ceps_atende').delete().eq('unidade_id', unitId)
+        await supabase.from('unidade_ceps_nao_atende').delete().eq('unidade_id', unitId)
       } else {
-        // Cria nova unidade
         const { data, error } = await supabase
           .from('unidade')
           .insert({
@@ -232,30 +252,42 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
         unitId = data.id
       }
 
-      // 2. Depois salva os CEPs na tabela unidade_ceps_atende
+      // 2. Salva as faixas de CEP
       if (cepRanges.length > 0) {
-        console.log('CEPs a serem salvos:', cepRanges)
-        
-        const cepsToSave = cepRanges.map(range => ({
-          'unidade_id (FK)': unitId,
-          cep_inicial: range.cep_start,
-          cep_final: range.cep_end,
-          faixa_nao_atende: range.faixa_nao_atende
-        }))
-        
-        console.log('Dados formatados para salvar:', cepsToSave)
+        // Separa os registros que têm faixa excluída dos que não têm
+        const cepsAtendidos = cepRanges
+          .filter(range => !range.faixa_excluida)
+          .map(range => ({
+            unidade_id: unitId,
+            cep_inicial: range.cep_inicial,
+            cep_final: range.cep_final
+          }))
 
-        const { data: savedCeps, error: rangesError } = await supabase
-          .from('unidade_ceps_atende')
-          .insert(cepsToSave)
-          .select()
+        const cepsNaoAtendidos = cepRanges
+          .filter(range => range.faixa_excluida)
+          .map(range => ({
+            unidade_id: unitId,
+            cep_base: range.cep_inicial,
+            faixa_excluida: range.faixa_excluida.padStart(3, '0')
+          }))
 
-        if (rangesError) {
-          console.error('Erro ao salvar CEPs:', rangesError)
-          throw rangesError
+        // Salva os CEPs atendidos
+        if (cepsAtendidos.length > 0) {
+          const { error: rangesError } = await supabase
+            .from('unidade_ceps_atende')
+            .insert(cepsAtendidos)
+
+          if (rangesError) throw rangesError
         }
 
-        console.log('CEPs salvos com sucesso:', savedCeps)
+        // Salva os CEPs não atendidos
+        if (cepsNaoAtendidos.length > 0) {
+          const { error: naoAtendeError } = await supabase
+            .from('unidade_ceps_nao_atende')
+            .insert(cepsNaoAtendidos)
+
+          if (naoAtendeError) throw naoAtendeError
+        }
       }
 
       toast({
@@ -396,7 +428,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
               <Checkbox
                 id="status"
                 checked={newUnit.status}
-                onCheckedChange={(checked) => handleNewUnitChange('status', checked === true)}
+                onCheckedChange={(checked: boolean) => handleNewUnitChange('status', checked === true)}
               />
               <Label htmlFor="status">Ativo</Label>
             </div>
@@ -404,7 +436,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
               <Checkbox
                 id="atende_aplicativo"
                 checked={newUnit.atende_aplicativo}
-                onCheckedChange={(checked) => handleNewUnitChange('atende_aplicativo', checked === true)}
+                onCheckedChange={(checked: boolean) => handleNewUnitChange('atende_aplicativo', checked === true)}
               />
               <Label htmlFor="atende_aplicativo">Atende Aplicativo</Label>
             </div>
@@ -412,7 +444,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
               <Checkbox
                 id="mostra_precos_unidades"
                 checked={newUnit.mostra_precos_unidades}
-                onCheckedChange={(checked) => handleNewUnitChange('mostra_precos_unidades', checked === true)}
+                onCheckedChange={(checked: boolean) => handleNewUnitChange('mostra_precos_unidades', checked === true)}
               />
               <Label htmlFor="mostra_precos_unidades">Mostra Preços</Label>
             </div>
@@ -435,70 +467,79 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
                       <X className="h-4 w-4 text-gray-500" />
                     </Button>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>CEP Inicial</Label>
-                      <Input
-                        value={range.cep_start}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, '').slice(0, 8)
-                          const newRanges = [...cepRanges]
-                          newRanges[index] = {
-                            ...newRanges[index],
-                            cep_start: value
-                          }
-                          setCepRanges(newRanges)
-                        }}
-                        maxLength={8}
-                        placeholder="00000000"
-                      />
+                  <div>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <Label>CEP Inicial</Label>
+                        <Input
+                          value={range.cep_inicial}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 5)
+                            const newRanges = [...cepRanges]
+                            newRanges[index] = {
+                              ...newRanges[index],
+                              cep_inicial: value
+                            }
+                            setCepRanges(newRanges)
+                          }}
+                          maxLength={5}
+                          placeholder="00000"
+                        />
+                      </div>
+                      <div>
+                        <Label>CEP Final</Label>
+                        <Input
+                          value={range.cep_final}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 5)
+                            const newRanges = [...cepRanges]
+                            newRanges[index] = {
+                              ...newRanges[index],
+                              cep_final: value
+                            }
+                            setCepRanges(newRanges)
+                          }}
+                          maxLength={5}
+                          placeholder="00000"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <Label>CEP Final</Label>
-                      <Input
-                        value={range.cep_end}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, '').slice(0, 8)
-                          const newRanges = [...cepRanges]
-                          newRanges[index] = {
-                            ...newRanges[index],
-                            cep_end: value
-                          }
-                          setCepRanges(newRanges)
-                        }}
-                        maxLength={8}
-                        placeholder="00000000"
-                      />
-                    </div>
-                    <div>
-                      <Label>Faixa Não Atende</Label>
-                      <Input
-                        value={range.faixa_nao_atende_text || range.faixa_nao_atende?.join(', ') || ''}
-                        onChange={(e) => {
-                          const newRanges = [...cepRanges]
-                          newRanges[index] = {
-                            ...newRanges[index],
-                            faixa_nao_atende_text: e.target.value
-                          }
-                          setCepRanges(newRanges)
-                        }}
-                        onBlur={(e) => {
-                          const value = e.target.value
-                            .split(',')
-                            .map(num => num.trim())
-                            .filter(num => /^\d{1,3}$/.test(num))
-                            .map(num => num.padStart(3, '0'))
-                          
-                          const newRanges = [...cepRanges]
-                          newRanges[index] = {
-                            ...newRanges[index],
-                            faixa_nao_atende: value,
-                            faixa_nao_atende_text: value.join(', ')
-                          }
-                          setCepRanges(newRanges)
-                        }}
-                        placeholder="Ex: 001, 002, 003"
-                      />
+                    <h3 className="text-sm font-semibold mb-2">Faixa que não atende no CEP:</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>CEP Base</Label>
+                        <Input
+                          value={range.cep_base || ''}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 5)
+                            const newRanges = [...cepRanges]
+                            newRanges[index] = {
+                              ...newRanges[index],
+                              cep_base: value
+                            }
+                            setCepRanges(newRanges)
+                          }}
+                          maxLength={5}
+                          placeholder="00000"
+                        />
+                      </div>
+                      <div>
+                        <Label>Faixa Excluída</Label>
+                        <Input
+                          value={range.faixa_excluida}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 3)
+                            const newRanges = [...cepRanges]
+                            newRanges[index] = {
+                              ...newRanges[index],
+                              faixa_excluida: value
+                            }
+                            setCepRanges(newRanges)
+                          }}
+                          maxLength={3}
+                          placeholder="000"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
