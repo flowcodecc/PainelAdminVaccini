@@ -20,12 +20,20 @@ interface UnitDialogProps {
   healthPlans: HealthPlan[]
 }
 
+interface OriginalCepRange {
+  cep_inicial?: string;
+  cep_final?: string;
+  cep_base?: string;
+  faixa_excluida?: string;
+}
+
 interface CepRange {
+  id?: number;
   cep_inicial: string;
   cep_final: string;
   faixa_excluida: string;
-  id: string;
   cep_base?: string;
+  original?: OriginalCepRange;
 }
 
 const DAYS = [
@@ -100,14 +108,49 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
       cep_inicial: '', 
       cep_final: '', 
       faixa_excluida: '',
-      cep_base: '',
-      id: Date.now().toString()
+      cep_base: ''
     }])
   }
 
-  const handleRemoveCepRange = (index: number, id: string) => {
-    const newRanges = cepRanges.filter((range) => range.id !== id)
-    setCepRanges(newRanges)
+  const handleRemoveCepRange = async (index: number, id?: number) => {
+    try {
+      // Se tem ID, remove do banco
+      if (id) {
+        const range = cepRanges[index]
+        
+        // Verifica se é um CEP atendido ou não atendido
+        if (range.cep_inicial && range.cep_final) {
+          // Remove da tabela de CEPs atendidos
+          const { error } = await supabase
+            .from('unidade_ceps_atende')
+            .delete()
+            .eq('id', id)
+            
+          if (error) {
+            console.error('Erro ao remover CEP atendido:', error)
+            return
+          }
+        } else if (range.cep_base && range.faixa_excluida) {
+          // Remove da tabela de CEPs não atendidos
+          const { error } = await supabase
+            .from('unidade_ceps_nao_atende')
+            .delete()
+            .eq('id', id)
+            
+          if (error) {
+            console.error('Erro ao remover CEP não atendido:', error)
+            return
+          }
+        }
+      }
+
+      // Remove do estado local
+      const newRanges = [...cepRanges]
+      newRanges.splice(index, 1)
+      setCepRanges(newRanges)
+    } catch (error) {
+      console.error('Erro ao remover CEP:', error)
+    }
   }
 
   const handleAddBlockedCep = () => {
@@ -129,7 +172,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
       // Busca as faixas de CEP que a unidade atende
       const { data: cepRangesData, error: cepRangesError } = await supabase
         .from('unidade_ceps_atende')
-        .select('*')
+        .select('id, cep_inicial, cep_final, unidade_id')
         .eq('unidade_id', unitId)
 
       if (cepRangesError) {
@@ -140,7 +183,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
       // Busca as faixas não atendidas
       const { data: cepsNaoAtendeData, error: cepsNaoAtendeError } = await supabase
         .from('unidade_ceps_nao_atende')
-        .select('*')
+        .select('id, cep_base, faixa_excluida, unidade_id')
         .eq('unidade_id', unitId)
 
       if (cepsNaoAtendeError) {
@@ -148,31 +191,35 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
         return
       }
 
+      let formattedRanges: CepRange[] = []
+
+      // Formata os CEPs atendidos
       if (cepRangesData) {
-        const formattedRanges = cepRangesData.map(range => ({
-          id: range.id.toString(),
-          cep_inicial: range.cep_inicial,
-          cep_final: range.cep_final,
+        formattedRanges = cepRangesData.map(range => ({
+          id: range.id,
+          cep_inicial: range.cep_inicial || '',
+          cep_final: range.cep_final || '',
           faixa_excluida: '',
-          cep_base: ''
+          cep_base: '',
+          tipo: 'atende'
         }))
-
-        // Adiciona as faixas não atendidas
-        if (cepsNaoAtendeData) {
-          cepsNaoAtendeData.forEach(naoAtende => {
-            formattedRanges.push({
-              id: `nao-atende-${Date.now()}`,
-              cep_inicial: naoAtende.cep_base,
-              cep_final: naoAtende.cep_base,
-              faixa_excluida: naoAtende.faixa_excluida,
-              cep_base: naoAtende.cep_base
-            })
-          })
-        }
-
-        console.log('CEPs formatados:', formattedRanges)
-        setCepRanges(formattedRanges)
       }
+
+      // Adiciona os CEPs não atendidos
+      if (cepsNaoAtendeData) {
+        const rangesNaoAtende = cepsNaoAtendeData.map(naoAtende => ({
+          id: naoAtende.id,
+          cep_inicial: '',
+          cep_final: '',
+          faixa_excluida: naoAtende.faixa_excluida || '',
+          cep_base: naoAtende.cep_base || '',
+          tipo: 'nao_atende'
+        }))
+        formattedRanges = [...formattedRanges, ...rangesNaoAtende]
+      }
+
+      console.log('CEPs formatados:', formattedRanges)
+      setCepRanges(formattedRanges)
     } catch (error) {
       console.error('Erro completo:', error)
       setCepRanges([])
@@ -220,10 +267,6 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
 
         if (error) throw error
         unitId = newUnit.id
-
-        // Deleta os registros antigos
-        await supabase.from('unidade_ceps_atende').delete().eq('unidade_id', unitId)
-        await supabase.from('unidade_ceps_nao_atende').delete().eq('unidade_id', unitId)
       } else {
         const { data, error } = await supabase
           .from('unidade')
@@ -252,41 +295,130 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
         unitId = data.id
       }
 
-      // 2. Salva as faixas de CEP
+      // 2. Processa as faixas de CEP
       if (cepRanges.length > 0) {
-        // Separa os registros que têm faixa excluída dos que não têm
+        // Primeiro processa os CEPs atendidos para ter os IDs
         const cepsAtendidos = cepRanges
-          .filter(range => !range.faixa_excluida)
+          .filter(range => range.cep_inicial && range.cep_final)
           .map(range => ({
+            ...range,
             unidade_id: unitId,
-            cep_inicial: range.cep_inicial,
-            cep_final: range.cep_final
+            cep_inicial: range.cep_inicial.padStart(5, '0').slice(0, 5),
+            cep_final: range.cep_final.padStart(5, '0').slice(0, 5)
           }))
 
-        const cepsNaoAtendidos = cepRanges
-          .filter(range => range.faixa_excluida)
-          .map(range => ({
-            unidade_id: unitId,
-            cep_base: range.cep_inicial,
-            faixa_excluida: range.faixa_excluida.padStart(3, '0')
-          }))
+        // Processa os CEPs atendidos primeiro para obter os IDs
+        for (const cep of cepsAtendidos) {
+          try {
+            if (cep.id) {
+              // Se tem ID, faz update
+              const { error } = await supabase
+                .from('unidade_ceps_atende')
+                .update({
+                  cep_inicial: cep.cep_inicial,
+                  cep_final: cep.cep_final,
+                  unidade_id: unitId
+                })
+                .eq('id', cep.id)
 
-        // Salva os CEPs atendidos
-        if (cepsAtendidos.length > 0) {
-          const { error: rangesError } = await supabase
-            .from('unidade_ceps_atende')
-            .insert(cepsAtendidos)
+              if (error) {
+                console.error('Erro ao atualizar CEP atendido:', error)
+                throw error
+              }
+            } else {
+              // Se não tem ID, faz insert e guarda o ID retornado
+              const { data, error } = await supabase
+                .from('unidade_ceps_atende')
+                .insert({
+                  unidade_id: unitId,
+                  cep_inicial: cep.cep_inicial,
+                  cep_final: cep.cep_final
+                })
+                .select()
+                .single()
 
-          if (rangesError) throw rangesError
+              if (error) {
+                console.error('Erro ao inserir novo CEP atendido:', error)
+                throw error
+              }
+
+              // Atualiza o ID no objeto local
+              cep.id = data.id
+            }
+          } catch (error) {
+            console.error('Erro ao processar CEP atendido:', error)
+            throw error
+          }
         }
 
-        // Salva os CEPs não atendidos
-        if (cepsNaoAtendidos.length > 0) {
-          const { error: naoAtendeError } = await supabase
-            .from('unidade_ceps_nao_atende')
-            .insert(cepsNaoAtendidos)
+        // Agora processa os CEPs não atendidos
+        const cepsNaoAtendidos = cepRanges
+          .filter(range => range.cep_base && range.faixa_excluida)
+          .map(range => {
+            // Encontra o CEP atendido correspondente baseado no cep_base
+            const cepBase = range.cep_base || ''
+            const cepAtendido = cepsAtendidos.find(cep => 
+              parseInt(cep.cep_inicial) <= parseInt(cepBase) && 
+              parseInt(cep.cep_final) >= parseInt(cepBase)
+            )
 
-          if (naoAtendeError) throw naoAtendeError
+            if (!cepAtendido) {
+              console.error('CEP atendido não encontrado para o CEP base:', cepBase)
+            }
+
+            return {
+              ...range,
+              unidade_id: unitId,
+              cep_base: cepBase.padStart(5, '0').slice(0, 5),
+              faixa_excluida: (range.faixa_excluida || '').padStart(3, '0').slice(0, 3),
+              cep_atende_id: cepAtendido?.id
+            }
+          })
+
+        // Processa os CEPs não atendidos
+        for (const cep of cepsNaoAtendidos) {
+          try {
+            if (!cep.cep_atende_id) {
+              console.error('CEP não atendido sem vínculo com CEP atendido:', cep)
+              continue
+            }
+
+            if (cep.id) {
+              // Se tem ID, faz update
+              const { error } = await supabase
+                .from('unidade_ceps_nao_atende')
+                .update({
+                  cep_base: cep.cep_base,
+                  faixa_excluida: cep.faixa_excluida,
+                  unidade_id: unitId,
+                  cep_atende_id: cep.cep_atende_id
+                })
+                .eq('id', cep.id)
+
+              if (error) {
+                console.error('Erro ao atualizar CEP não atendido:', error)
+                throw error
+              }
+            } else {
+              // Se não tem ID, faz insert
+              const { error } = await supabase
+                .from('unidade_ceps_nao_atende')
+                .insert({
+                  unidade_id: unitId,
+                  cep_base: cep.cep_base,
+                  faixa_excluida: cep.faixa_excluida,
+                  cep_atende_id: cep.cep_atende_id
+                })
+
+              if (error) {
+                console.error('Erro ao inserir novo CEP não atendido:', error)
+                throw error
+              }
+            }
+          } catch (error) {
+            console.error('Erro ao processar CEP não atendido:', error)
+            throw error
+          }
         }
       }
 
@@ -294,6 +426,11 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
         title: "Sucesso",
         description: newUnit.id ? "Unidade atualizada com sucesso" : "Unidade criada com sucesso",
       })
+
+      // Recarrega os dados após salvar
+      if (unitId) {
+        await fetchCepRanges(unitId)
+      }
 
       onSuccess()
       onOpenChange(false)

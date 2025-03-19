@@ -16,8 +16,7 @@ interface Vaccine {
   vacina_nome: string
   preco: number
   status: string
-  esquema_id: number | null
-  total_doses: number
+  total_doses?: number
 }
 
 interface VaccineDialogProps {
@@ -40,36 +39,48 @@ export function VaccineDialog({ isOpen, onClose, onSuccess, vaccine }: VaccineDi
 
   useEffect(() => {
     if (vaccine) {
-      setFormData({
-        vacina_nome: vaccine.vacina_nome,
-        preco: vaccine.preco.toString(),
-        status: vaccine.status === 'Ativo',
-        temDoses: !!vaccine.esquema_id,
-        numeroDoses: '',
-        esquema_id: vaccine.esquema_id
-      })
+      const buscarEsquema = async () => {
+        const { data: esquema } = await supabase
+          .from('esquema')
+          .select('*')
+          .eq('vacina_fk', vaccine.vacina_id)
+          .single()
 
-      if (vaccine.esquema_id) {
-        carregarDoses(vaccine.esquema_id)
+        setFormData({
+          vacina_nome: vaccine.vacina_nome,
+          preco: vaccine.preco.toString(),
+          status: vaccine.status === 'Ativo',
+          temDoses: !!esquema,
+          numeroDoses: esquema ? contarDoses(esquema) : '',
+          esquema_id: null
+        })
       }
+
+      buscarEsquema()
     }
   }, [vaccine])
 
-  const carregarDoses = async (esquemaId: number) => {
+  const contarDoses = (esquema: any) => {
+    let total = 0
+    if (esquema.dose_1) total++
+    if (esquema.dose_2) total++
+    if (esquema.dose_3) total++
+    if (esquema.dose_4) total++
+    if (esquema.dose_5) total++
+    return total.toString()
+  }
+
+  const carregarDoses = async (vacina_id: number) => {
     const { data } = await supabase
-      .from('esquemas')
+      .from('esquema')
       .select('*')
-      .eq('id', esquemaId)
+      .eq('vacina_fk', vacina_id)
       .single()
 
     if (data) {
       setFormData(prev => ({
         ...prev,
-        dose_1: data.dose_1,
-        dose_2: data.dose_2,
-        dose_3: data.dose_3,
-        dose_4: data.dose_4,
-        dose_5: data.dose_5
+        numeroDoses: contarDoses(data)
       }))
     }
   }
@@ -80,8 +91,8 @@ export function VaccineDialog({ isOpen, onClose, onSuccess, vaccine }: VaccineDi
       if (vaccine) {
         const mudouNome = formData.vacina_nome !== vaccine.vacina_nome
         const mudouPreco = Number(formData.preco) !== vaccine.preco
-        const mudouStatus = formData.status !== (vaccine.status === 'Ativo')
-        const mudouDoses = formData.temDoses !== !!vaccine.esquema_id || 
+        const mudouStatus = (formData.status ? 'Ativo' : 'Inativo') !== vaccine.status
+        const mudouDoses = formData.temDoses !== !!vaccine.total_doses || 
                           (formData.temDoses && Number(formData.numeroDoses) !== vaccine.total_doses)
 
         if (!mudouNome && !mudouPreco && !mudouStatus && !mudouDoses) {
@@ -112,34 +123,42 @@ export function VaccineDialog({ isOpen, onClose, onSuccess, vaccine }: VaccineDi
             dose_5: Number(formData.numeroDoses) >= 5
           }
 
-          if (vaccine.esquema_id) {
+          // Buscar esquema existente
+          const { data: esquemaExistente } = await supabase
+            .from('esquema')
+            .select('id')
+            .eq('vacina_fk', vaccine.vacina_id)
+            .single()
+
+          if (esquemaExistente) {
             // Atualizar esquema existente
             const { error: esquemaError } = await supabase
               .from('esquema')
               .update(esquemaData)
-              .eq('id', vaccine.esquema_id)
-
-            if (esquemaError) throw esquemaError
-          } else {
-            // Criar novo esquema
-            const { data: esquema, error: esquemaError } = await supabase
-              .from('esquema')
-              .insert([{
-                ...esquemaData,
-                created_at: new Date().toISOString()
-              }])
-              .select()
+              .eq('id', esquemaExistente.id)
+              .select('*')
               .single()
 
-            if (esquemaError) throw esquemaError
+            if (esquemaError) {
+              console.error('Erro ao atualizar esquema:', esquemaError)
+              throw esquemaError
+            }
 
-            // Vincular esquema à vacina
-            const { error: updateError } = await supabase
-              .from('ref_vacinas')
-              .update({ esquema_id: esquema.id })
-              .eq('ref_vacinasID', vaccine.vacina_id)
+            console.log('Esquema atualizado')
+          } else {
+            // Criar novo esquema apenas se não existir
+            const { data: esquema, error: esquemaError } = await supabase
+              .from('esquema')
+              .insert([esquemaData])
+              .select('*')
+              .single()
 
-            if (updateError) throw updateError
+            if (esquemaError) {
+              console.error('Erro ao criar esquema:', esquemaError)
+              throw esquemaError
+            }
+
+            console.log('Novo esquema criado:', esquema)
           }
         }
 
@@ -151,28 +170,46 @@ export function VaccineDialog({ isOpen, onClose, onSuccess, vaccine }: VaccineDi
         onSuccess()
         onClose()
       } else {
+        // Validações antes de criar
+        if (!formData.vacina_nome || !formData.preco) {
+          toast({
+            title: "Erro",
+            description: "Preencha todos os campos obrigatórios"
+          })
+          return
+        }
+
         // Criar nova vacina
         const vacinaData = {
           nome: formData.vacina_nome,
-          codigo: null,
           preco: Number(formData.preco),
-          status: formData.status,
-          esquema_id: null
+          status: !!formData.status
         }
 
+        console.log('Dados para criar vacina:', vacinaData)
+
+        // Primeiro criar a vacina
         const { data: novaVacina, error: vacinaError } = await supabase
           .from('ref_vacinas')
-          .insert([vacinaData])
-          .select()
+          .insert(vacinaData)
+          .select('"ref_vacinasID", nome, preco, status')
           .single()
 
-        if (vacinaError) throw vacinaError
+        if (vacinaError) {
+          console.error('Erro ao criar vacina:', vacinaError)
+          throw vacinaError
+        }
 
-        // Se tem doses, criar o esquema
+        if (!novaVacina) {
+          throw new Error('Vacina não foi criada corretamente')
+        }
+
+        console.log('Vacina criada:', novaVacina)
+
+        // Se tem doses, criar o esquema usando o ID da vacina criada
         if (formData.temDoses && formData.numeroDoses) {
           const esquemaData = {
             vacina_fk: novaVacina.ref_vacinasID,
-            created_at: new Date().toISOString(),
             dose_1: true,
             dose_2: Number(formData.numeroDoses) >= 2,
             dose_3: Number(formData.numeroDoses) >= 3,
@@ -180,21 +217,25 @@ export function VaccineDialog({ isOpen, onClose, onSuccess, vaccine }: VaccineDi
             dose_5: Number(formData.numeroDoses) >= 5
           }
 
+          console.log('Dados para criar esquema:', esquemaData)
+
+          // Criar o esquema com o ID da vacina
           const { data: esquema, error: esquemaError } = await supabase
             .from('esquema')
             .insert([esquemaData])
-            .select()
+            .select('id, vacina_fk')
             .single()
 
-          if (esquemaError) throw esquemaError
+          if (esquemaError) {
+            console.error('Erro ao criar esquema:', esquemaError)
+            throw esquemaError
+          }
 
-          // Atualizar a vacina com o esquema_id
-          const { error: updateError } = await supabase
-            .from('ref_vacinas')
-            .update({ esquema_id: esquema.id })
-            .eq('ref_vacinasID', novaVacina.ref_vacinasID)
+          if (!esquema) {
+            throw new Error('Esquema não foi criado corretamente')
+          }
 
-          if (updateError) throw updateError
+          console.log('Esquema criado:', esquema)
         }
 
         toast({
@@ -248,8 +289,8 @@ export function VaccineDialog({ isOpen, onClose, onSuccess, vaccine }: VaccineDi
           <div className="flex items-center space-x-2">
             <Checkbox
               id="status"
-              checked={formData.status}
-              onCheckedChange={(checked) => setFormData({ ...formData, status: checked as boolean })}
+              checked={!!formData.status}
+              onCheckedChange={(checked) => setFormData(prev => ({ ...prev, status: checked ? true : false }))}
             />
             <Label htmlFor="status">Ativo</Label>
           </div>

@@ -26,12 +26,8 @@ interface Vaccine {
   vacina_id: number
   vacina_nome: string
   preco: number
-  valor_plano: number
-  valor_protecao: number
   status: string
-  total_doses: number
-  esquema_id: number | null
-  percentual: number
+  total_doses?: number
 }
 
 export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {}) {
@@ -68,29 +64,7 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
 
   const handleDelete = async (id: number) => {
     try {
-      // 1. Primeiro atualiza a ref_vacinas para remover a referência ao esquema
-      const { error: updateError } = await supabase
-        .from('ref_vacinas')
-        .update({ esquema_id: null })
-        .eq('ref_vacinasID', id)
-
-      if (updateError) {
-        console.error('Erro ao atualizar vacina:', updateError)
-        throw new Error('Erro ao atualizar referência do esquema')
-      }
-
-      // 2. Depois exclui o esquema
-      const { error: esquemaError } = await supabase
-        .from('esquema')
-        .delete()
-        .eq('vacina_fk', id)
-
-      if (esquemaError) {
-        console.error('Erro ao excluir esquema:', esquemaError)
-        throw new Error('Erro ao excluir esquema')
-      }
-
-      // 3. Por último exclui a vacina
+      // Como temos ON DELETE CASCADE, só precisamos deletar a vacina
       const { error: vacinaError } = await supabase
         .from('ref_vacinas')
         .delete()
@@ -139,7 +113,7 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
             <TableRow key={vaccine.vacina_id}>
               <TableCell>{vaccine.vacina_nome}</TableCell>
               <TableCell>R$ {vaccine.preco.toFixed(2)}</TableCell>
-              <TableCell>{vaccine.status}</TableCell>
+              <TableCell>{vaccine.status === 'Ativo' ? 'Ativo' : 'Inativo'}</TableCell>
               <TableCell>
                 <div className="flex gap-2">
                   <Button
