@@ -12,6 +12,11 @@ import { toast } from "@/components/ui/use-toast"
 import { User as UserType, Unit } from "@/types"
 import { useUser } from '@/contexts/UserContext'
 
+interface SimpleUnit {
+  id: number
+  nome: string
+}
+
 interface GerenteDialogProps {
   isOpen: boolean
   onClose: () => void
@@ -21,7 +26,7 @@ interface GerenteDialogProps {
 
 export function GerenteDialog({ isOpen, onClose, onSuccess, gerente }: GerenteDialogProps) {
   const { currentUser } = useUser()
-  const [units, setUnits] = useState<Unit[]>([])
+  const [units, setUnits] = useState<SimpleUnit[]>([])
   const [formData, setFormData] = useState({
     nome: '',
     email: '',
