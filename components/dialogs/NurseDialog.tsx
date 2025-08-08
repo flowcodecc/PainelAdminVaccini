@@ -31,6 +31,17 @@ export function NurseDialog({ isOpen, onClose, onSuccess, units, nurse }: NurseD
     is_active: true
   })
 
+  const resetForm = () => {
+    setFormData({
+      nome: '',
+      sobrenome: '',
+      email: '',
+      senha: '',
+      units: [],
+      is_active: true
+    })
+  }
+
   useEffect(() => {
     if (nurse) {
       setFormData({
@@ -42,14 +53,7 @@ export function NurseDialog({ isOpen, onClose, onSuccess, units, nurse }: NurseD
         is_active: nurse.is_active
       })
     } else {
-      setFormData({
-        nome: '',
-        sobrenome: '',
-        email: '',
-        senha: '',
-        units: [],
-        is_active: true
-      })
+      resetForm()
     }
   }, [nurse])
 
@@ -99,7 +103,66 @@ export function NurseDialog({ isOpen, onClose, onSuccess, units, nurse }: NurseD
         onSuccess()
         onClose()
       } else {
-        // Criar nova enfermeira (código existente)
+        // Validar campos obrigatórios
+        if (!formData.email || !formData.senha || !formData.nome) {
+          throw new Error('Nome, email e senha são obrigatórios')
+        }
+
+        // Verificar se email já existe
+        const { data: existingUser, error: checkError } = await supabase
+          .from('user')
+          .select('id')
+          .eq('email', formData.email)
+          .single()
+
+        if (existingUser) {
+          throw new Error('Este email já está cadastrado')
+        }
+
+        if (checkError && checkError.code !== 'PGRST116') {
+          throw checkError
+        }
+
+        // 1. Criar usuário no Auth
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.senha,
+        })
+
+        if (authError) throw authError
+
+        if (!authData.user?.id) {
+          throw new Error('Erro ao criar usuário no Auth')
+        }
+
+        // 2. Criar usuário na tabela user
+        const { error: userError } = await supabase
+          .from('user')
+          .insert({
+            id: authData.user.id,
+            email: formData.email,
+            nome: formData.nome,
+            sobrenome: formData.sobrenome,
+            user_role_id: 2, // role de enfermeira
+            is_active: formData.is_active,
+            units: formData.units,
+            created_at: new Date().toISOString()
+          })
+
+        if (userError) {
+          // Se falhar, remover usuário do Auth
+          await supabase.auth.admin.deleteUser(authData.user.id)
+          throw userError
+        }
+
+        toast({
+          title: "Sucesso!",
+          description: "Enfermeira cadastrada com sucesso",
+        })
+
+        resetForm()
+        onSuccess()
+        onClose()
       }
     } catch (error: any) {
       console.error('Erro completo:', error)
@@ -227,7 +290,7 @@ export function NurseDialog({ isOpen, onClose, onSuccess, units, nurse }: NurseD
               Cancelar
             </Button>
             <Button type="submit">
-              Cadastrar
+              {nurse ? 'Salvar' : 'Cadastrar'}
             </Button>
           </div>
         </form>
