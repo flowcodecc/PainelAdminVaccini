@@ -218,17 +218,13 @@ export function GerenteDialog({ isOpen, onClose, onSuccess, gerente }: GerenteDi
                 label: unit.nome,
                 value: unit.id.toString()
               }))}
-              onValueChange={(values) => 
+              onChange={(values) => 
                 setFormData(prev => ({ 
                   ...prev, 
                   selectedUnits: values.map(v => parseInt(v)) 
                 }))
               }
-              value={formData.selectedUnits.map(id => id.toString())}
-              placeholder="Selecione as unidades"
-              variant="inverted"
-              animation={2}
-              maxCount={3}
+              selected={formData.selectedUnits.map(id => id.toString())}
             />
           </div>
 
