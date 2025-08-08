@@ -37,52 +37,13 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
   const [units, setUnits] = useState<Unit[]>([])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false)
-  const [formData, setFormData] = useState({
-    nome: '',
-    nome_interno: '',
-    email: '',
-    telefone: '',
-    cep: '',
-    logradouro: '',
-    numero: '',
-    complemento: '',
-    bairro: '',
-    cidade: '',
-    estado: '',
-    status: true,
-    atende_aplicativo: true,
-    mostra_precos_unidades: true,
-    qtd_agendamento_por_faixa: 0,
-    qtd_vacinas_por_faixa: 0
-  })
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
 
   useEffect(() => {
     fetchUnits()
   }, [])
 
-  useEffect(() => {
-    if (selectedUnit) {
-      setFormData({
-        nome: selectedUnit.nome || '',
-        nome_interno: selectedUnit.nome_interno || '',
-        email: selectedUnit.email || '',
-        telefone: selectedUnit.telefone || '',
-        cep: selectedUnit.cep || '',
-        logradouro: selectedUnit.logradouro || '',
-        numero: selectedUnit.numero || '',
-        complemento: selectedUnit.complemento || '',
-        bairro: selectedUnit.bairro || '',
-        cidade: selectedUnit.cidade || '',
-        estado: selectedUnit.estado || '',
-        status: selectedUnit.status || false,
-        atende_aplicativo: selectedUnit.atende_aplicativo || false,
-        mostra_precos_unidades: selectedUnit.mostra_precos_unidades || false,
-        qtd_agendamento_por_faixa: selectedUnit.qtd_agendamento_por_faixa || 0,
-        qtd_vacinas_por_faixa: selectedUnit.qtd_vacinas_por_faixa || 0
-      })
-    }
-  }, [selectedUnit])
+
 
   const fetchUnits = async () => {
     console.log('Buscando unidades...')
@@ -102,133 +63,9 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    try {
-      const cleanedCep = formData.cep.replace(/\D/g, '')
-      const cleanedPhone = formData.telefone.replace(/\D/g, '')
-      
-      const dataToSave = {
-        nome: String(formData.nome).trim(),
-        nome_interno: String(formData.nome_interno).trim(),
-        email: String(formData.email).trim(),
-        telefone: String(cleanedPhone),
-        cep: String(cleanedCep),
-        logradouro: String(formData.logradouro).trim(),
-        numero: String(formData.numero).trim(),
-        complemento: formData.complemento ? String(formData.complemento).trim() : '',
-        bairro: String(formData.bairro).trim(),
-        cidade: String(formData.cidade).trim(),
-        estado: String(formData.estado).trim(),
-        status: Boolean(formData.status),
-        atende_aplicativo: Boolean(formData.atende_aplicativo),
-        mostra_precos_unidades: Boolean(formData.mostra_precos_unidades),
-        qtd_agendamento_por_faixa: formData.qtd_agendamento_por_faixa,
-        qtd_vacinas_por_faixa: formData.qtd_vacinas_por_faixa
-      }
 
-      let error;
 
-      if (selectedUnit) {
-        const { error: updateError } = await supabase
-          .from('unidade')
-          .update(dataToSave)
-          .eq('id', selectedUnit.id)
-        error = updateError
-      } else {
-        const { error: insertError } = await supabase
-          .from('unidade')
-          .insert([dataToSave])
-        error = insertError
-      }
 
-      if (error) throw error
-
-      toast({
-        title: "Sucesso!",
-        description: selectedUnit ? "Unidade atualizada com sucesso" : "Unidade criada com sucesso",
-      })
-      
-      await fetchUnits()
-      setIsDialogOpen(false)
-      setSelectedUnit(null)
-      resetForm()
-    } catch (error: any) {
-      console.error('Erro completo:', error)
-      toast({
-        title: "Erro",
-        description: error.message || "Erro ao salvar unidade. Verifique os dados e tente novamente.",
-      })
-    }
-  }
-
-  const resetForm = () => {
-    setFormData({
-      nome: '',
-      nome_interno: '',
-      email: '',
-      telefone: '',
-      cep: '',
-      logradouro: '',
-      numero: '',
-      complemento: '',
-      bairro: '',
-      cidade: '',
-      estado: '',
-      status: true,
-      atende_aplicativo: true,
-      mostra_precos_unidades: true,
-      qtd_agendamento_por_faixa: 0,
-      qtd_vacinas_por_faixa: 0
-    })
-  }
-
-  const formatPhone = (value: string) => {
-    const cleaned = value.replace(/\D/g, '')
-    let formatted = cleaned
-
-    if (cleaned.length <= 11) {
-      if (cleaned.length > 2) formatted = `(${cleaned.slice(0, 2)}) ${cleaned.slice(2)}`
-      if (cleaned.length > 7) formatted = `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 7)}-${cleaned.slice(7)}`
-    }
-
-    return formatted
-  }
-
-  const formatCep = (value: string) => {
-    const cleaned = value.replace(/\D/g, '')
-    let formatted = cleaned
-
-    if (cleaned.length > 5) {
-      formatted = `${cleaned.slice(0, 5)}-${cleaned.slice(5, 8)}`
-    }
-
-    return formatted
-  }
-
-  const fetchAddressByCep = async (cep: string) => {
-    const cleanCep = cep.replace(/\D/g, '')
-    
-    if (cleanCep.length !== 8) return
-
-    try {
-      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`)
-      const data = await response.json()
-
-      if (!data.erro) {
-        setFormData(prev => ({
-          ...prev,
-          logradouro: data.logradouro || prev.logradouro,
-          bairro: data.bairro || prev.bairro,
-          cidade: data.localidade || prev.cidade,
-          estado: data.uf || prev.estado,
-        }))
-      }
-    } catch (error) {
-      console.error('Erro ao buscar CEP:', error)
-    }
-  }
 
   const handleDelete = async (id: number) => {
     try {
@@ -271,9 +108,12 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
             <CardTitle className="text-2xl font-bold text-gray-800">
               Gerenciamento de Unidades
             </CardTitle>
-            <Button onClick={() => setIsDialogOpen(true)}>
-            Adicionar Unidade
-          </Button>
+            <Button onClick={() => {
+              setSelectedUnit(null)
+              setIsDialogOpen(true)
+            }}>
+              Adicionar Unidade
+            </Button>
       </div>
         </CardHeader>
         <CardContent className="p-6">
@@ -373,9 +213,15 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
 
           <UnitDialog 
             open={isDialogOpen}
-            onOpenChange={setIsDialogOpen}
+            onOpenChange={(open) => {
+              setIsDialogOpen(open)
+              if (!open) setSelectedUnit(null)
+            }}
             unit={selectedUnit}
-            onSuccess={fetchUnits}
+            onSuccess={() => {
+              fetchUnits()
+              setSelectedUnit(null)
+            }}
             healthPlans={[]}
           />
 

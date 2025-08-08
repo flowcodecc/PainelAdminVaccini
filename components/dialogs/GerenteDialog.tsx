@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { MultiSelect } from "@/components/ui/multi-select"
 import { supabase } from "@/lib/supabase"
 import { toast } from "@/components/ui/use-toast"
-import { User as UserType } from "@/types"
+import { User as UserType, Unit } from "@/types"
 import { useUser } from '@/contexts/UserContext'
 
 interface GerenteDialogProps {
@@ -20,12 +21,18 @@ interface GerenteDialogProps {
 
 export function GerenteDialog({ isOpen, onClose, onSuccess, gerente }: GerenteDialogProps) {
   const { currentUser } = useUser()
+  const [units, setUnits] = useState<Unit[]>([])
   const [formData, setFormData] = useState({
     nome: '',
     email: '',
     senha: '',
-    is_active: true
+    is_active: true,
+    selectedUnits: [] as number[]
   })
+
+  useEffect(() => {
+    fetchUnits()
+  }, [])
 
   useEffect(() => {
     if (gerente) {
@@ -33,17 +40,34 @@ export function GerenteDialog({ isOpen, onClose, onSuccess, gerente }: GerenteDi
         nome: gerente.nome || '',
         email: gerente.email,
         senha: '',
-        is_active: gerente.is_active
+        is_active: gerente.is_active,
+        selectedUnits: gerente.units || []
       })
     } else {
       setFormData({
         nome: '',
         email: '',
         senha: '',
-        is_active: true
+        is_active: true,
+        selectedUnits: []
       })
     }
   }, [gerente])
+
+  const fetchUnits = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('unidade')
+        .select('id, nome')
+        .eq('status', true)
+        .order('nome')
+
+      if (error) throw error
+      if (data) setUnits(data)
+    } catch (error) {
+      console.error('Erro ao carregar unidades:', error)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -66,7 +90,8 @@ export function GerenteDialog({ isOpen, onClose, onSuccess, gerente }: GerenteDi
           .from('user')
           .update({
             nome: formData.nome,
-            is_active: formData.is_active
+            is_active: formData.is_active,
+            units: formData.selectedUnits
           })
           .eq('id', gerente.id)
 
@@ -95,7 +120,8 @@ export function GerenteDialog({ isOpen, onClose, onSuccess, gerente }: GerenteDi
               email: formData.email,
               nome: formData.nome,
               user_role_id: 3,
-              is_active: formData.is_active
+              is_active: formData.is_active,
+              units: formData.selectedUnits
             })
 
           if (userError) throw userError
@@ -179,6 +205,27 @@ export function GerenteDialog({ isOpen, onClose, onSuccess, gerente }: GerenteDi
               </div>
             </>
           )}
+
+          <div>
+            <Label htmlFor="units">Unidades</Label>
+            <MultiSelect
+              options={units.map(unit => ({
+                label: unit.nome,
+                value: unit.id.toString()
+              }))}
+              onValueChange={(values) => 
+                setFormData(prev => ({ 
+                  ...prev, 
+                  selectedUnits: values.map(v => parseInt(v)) 
+                }))
+              }
+              value={formData.selectedUnits.map(id => id.toString())}
+              placeholder="Selecione as unidades"
+              variant="inverted"
+              animation={2}
+              maxCount={3}
+            />
+          </div>
 
           <div className="flex items-center space-x-2">
             <Checkbox
