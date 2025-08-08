@@ -218,13 +218,15 @@ export function GerenteDialog({ isOpen, onClose, onSuccess, gerente }: GerenteDi
                 label: unit.nome,
                 value: unit.id.toString()
               }))}
-              onChange={(values) => 
+              onChange={(values) => {
+                console.log('MultiSelect onChange chamado:', values)
                 setFormData(prev => ({ 
                   ...prev, 
                   selectedUnits: values.map(v => parseInt(v)) 
                 }))
-              }
+              }}
               selected={formData.selectedUnits.map(id => id.toString())}
+              placeholder="Selecione as unidades"
             />
           </div>
 

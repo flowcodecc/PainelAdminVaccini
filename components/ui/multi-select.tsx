@@ -1,16 +1,9 @@
 'use client'
 
 import * as React from "react"
-import { Check } from "lucide-react"
+import { Check, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "./command"
 import {
   Popover,
   PopoverContent,
@@ -28,15 +21,35 @@ interface MultiSelectProps {
   onChange: (selected: string[]) => void
   className?: string
   id?: string
+  placeholder?: string
 }
 
-export function MultiSelect({ options, selected, onChange, className, id }: MultiSelectProps) {
+export function MultiSelect({ options, selected, onChange, className, id, placeholder }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false)
+
+  const handleSelect = (value: string) => {
+    console.log('handleSelect chamado para:', value)
+    console.log('Selected atual:', selected)
+    
+    const isSelected = selected.includes(value)
+    let newSelected: string[]
+    
+    if (isSelected) {
+      newSelected = selected.filter((item) => item !== value)
+      console.log('Removendo - novo array:', newSelected)
+    } else {
+      newSelected = [...selected, value]
+      console.log('Adicionando - novo array:', newSelected)
+    }
+    
+    onChange(newSelected)
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          type="button"
           variant="outline"
           role="combobox"
           aria-expanded={open}
@@ -44,25 +57,21 @@ export function MultiSelect({ options, selected, onChange, className, id }: Mult
           id={id}
         >
           {selected.length === 0
-            ? "Selecione..."
+            ? (placeholder ?? "Selecione...")
             : `${selected.length} selecionado(s)`}
+          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0">
-        <Command>
-          <CommandInput placeholder="Procurar..." />
-          <CommandEmpty>Nenhuma opção encontrada.</CommandEmpty>
-          <CommandGroup>
-            {options.map((option) => (
-              <CommandItem
+      <PopoverContent className="w-full p-0" align="start">
+        <div className="max-h-60 overflow-auto">
+          {options.length === 0 ? (
+            <div className="py-6 text-center text-sm">Nenhuma opção encontrada.</div>
+          ) : (
+            options.map((option) => (
+              <div
                 key={option.value}
-                onSelect={() => {
-                  onChange(
-                    selected.includes(option.value)
-                      ? selected.filter((item) => item !== option.value)
-                      : [...selected, option.value]
-                  )
-                }}
+                className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                onClick={() => handleSelect(option.value)}
               >
                 <Check
                   className={cn(
@@ -71,10 +80,10 @@ export function MultiSelect({ options, selected, onChange, className, id }: Mult
                   )}
                 />
                 {option.label}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        </Command>
+              </div>
+            ))
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   )
