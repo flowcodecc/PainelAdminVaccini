@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
 import { toast } from "@/components/ui/use-toast"
 import type { User, Unit } from "@/types"
+import { useUserUnitsFilter } from '@/hooks/useUserUnitsFilter'
 import {
   Table,
   TableBody,
@@ -34,6 +35,7 @@ interface UnitsTabProps {
 }
 
 export function UnitsTab({ currentUser }: UnitsTabProps) {
+  const { getUnitsFilter } = useUserUnitsFilter()
   const [units, setUnits] = useState<Unit[]>([])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false)
@@ -47,10 +49,17 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
 
   const fetchUnits = async () => {
     console.log('Buscando unidades...')
-    const { data, error } = await supabase
+    let query = supabase
       .from('unidade')
       .select('*')
-      .order('id')
+
+    // Aplica filtro de unidades se necessário
+    const unitsFilter = getUnitsFilter()
+    if (unitsFilter) {
+      query = query.in('id', unitsFilter.in)
+    }
+
+    const { data, error } = await query.order('id')
     
     if (error) {
       console.error('Erro ao buscar unidades:', error)

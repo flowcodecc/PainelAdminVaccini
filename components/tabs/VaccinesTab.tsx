@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { VaccineDialog } from "../dialogs/VaccineDialog"
 import { supabase } from "@/lib/supabase"
 import { User } from '@/types'
+import { useUserUnitsFilter } from '@/hooks/useUserUnitsFilter'
 import {
   Table,
   TableBody,
@@ -31,6 +32,7 @@ interface Vaccine {
 }
 
 export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {}) {
+  const { getUnitsFilter } = useUserUnitsFilter()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [vaccines, setVaccines] = useState<Vaccine[]>([])
   const [selectedVaccine, setSelectedVaccine] = useState<Vaccine | undefined>()

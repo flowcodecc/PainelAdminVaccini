@@ -10,9 +10,11 @@ import { NurseDialog } from '@/components/dialogs/NurseDialog'
 import { toast } from '@/components/ui/use-toast'
 import { DeleteAlertDialog } from '@/components/ui/delete-alert-dialog'
 import { useUser } from '@/contexts/UserContext'
+import { useUserUnitsFilter } from '@/hooks/useUserUnitsFilter'
 
 export function NursesTab() {
   const { currentUser } = useUser()
+  const { getUnitsFilter, filterByUserUnits } = useUserUnitsFilter()
   const [showDialog, setShowDialog] = useState(false)
   const [unidades, setUnidades] = useState<Unit[]>([])
   const [nurses, setNurses] = useState<NurseView[]>([])
@@ -26,11 +28,18 @@ export function NursesTab() {
   }, [])
 
   const fetchUnidades = async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('unidade')
       .select('*')
       .eq('status', true)
-      .order('nome')
+
+    // Aplica filtro de unidades se necessário
+    const unitsFilter = getUnitsFilter()
+    if (unitsFilter) {
+      query = query.in('id', unitsFilter.in)
+    }
+
+    const { data, error } = await query.order('nome')
 
     if (error) {
       console.error('Erro ao buscar unidades:', error)
@@ -56,7 +65,21 @@ export function NursesTab() {
 
       if (data) {
         console.log('Enfermeiras com unidades:', data)
-        setNurses(data)
+        
+        // Filtra enfermeiras que trabalham nas unidades do gerente
+        const unitsFilter = getUnitsFilter()
+        let filteredNurses = data
+        
+        if (unitsFilter) {
+          filteredNurses = data.filter(nurse => {
+            // Verifica se a enfermeira trabalha em pelo menos uma das unidades permitidas
+            return nurse.units && nurse.units.some((unitId: number) => 
+              unitsFilter.in.includes(unitId)
+            )
+          })
+        }
+
+        setNurses(filteredNurses)
       }
     } catch (error) {
       console.error('Erro completo:', error)

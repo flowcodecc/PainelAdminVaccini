@@ -16,6 +16,7 @@ import { Unit, Patient, UnitSchedule, Vaccine } from '@/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog"
+import { useUserUnitsFilter } from '@/hooks/useUserUnitsFilter'
 
 interface Appointment {
   id: number
@@ -54,6 +55,7 @@ interface Appointment {
 }
 
 export function AppointmentsTab() {
+  const { getUnitsFilter, shouldFilterByUnits } = useUserUnitsFilter()
   const [units, setUnits] = useState<Unit[]>([])
   const [patients, setPatients] = useState<Patient[]>([])
   const [selectedUnit, setSelectedUnit] = useState<number>(0)
@@ -82,10 +84,18 @@ export function AppointmentsTab() {
 
   // 🔥 Busca unidades disponíveis
   const fetchUnits = async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('unidade')
       .select('*')
       .eq('status', true)
+
+    // Aplica filtro de unidades se necessário
+    const unitsFilter = getUnitsFilter()
+    if (unitsFilter) {
+      query = query.in('id', unitsFilter.in)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('Erro ao buscar unidades:', error)
@@ -124,7 +134,23 @@ export function AppointmentsTab() {
       }
 
       // Extrai os IDs únicos das unidades do resultado
-      const unitIds = Array.from(new Set(data.map((item: { unidade_id: number }) => item.unidade_id)))
+      let unitIds = Array.from(new Set(data.map((item: { unidade_id: number }) => item.unidade_id)))
+
+      // Filtra por unidades do usuário se necessário
+      const unitsFilter = getUnitsFilter()
+      if (unitsFilter) {
+        unitIds = unitIds.filter(id => unitsFilter.in.includes(id))
+      }
+
+      if (unitIds.length === 0) {
+        toast({
+          title: "Aviso",
+          description: "Nenhuma das suas unidades vinculadas atende ao CEP deste paciente",
+          duration: 4000
+        })
+        setUnits([])
+        return
+      }
 
       // Busca os detalhes das unidades retornadas
       const { data: unitsData, error: unitsError } = await supabase
@@ -357,7 +383,7 @@ export function AppointmentsTab() {
   // Busca agendamentos
   const fetchAppointments = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('vw_agendamentos_com_usuarios')
         .select(`
           *,
@@ -366,7 +392,14 @@ export function AppointmentsTab() {
           forma_pagamento:forma_pagamento_id (nome)
         `)
         .eq('status_id', 1)
-        .order('horario', { ascending: true })
+
+      // Aplica filtro de unidades se necessário
+      const unitsFilter = getUnitsFilter()
+      if (unitsFilter) {
+        query = query.in('unidade_id', unitsFilter.in)
+      }
+
+      const { data, error } = await query.order('horario', { ascending: true })
 
       if (error) throw error
 
