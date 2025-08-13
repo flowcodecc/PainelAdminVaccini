@@ -19,11 +19,13 @@ export function GerentesTab() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [gerenteToDelete, setGerenteToDelete] = useState<string | null>(null)
   const { currentUser } = useUser()
-  const { getUnitsFilter } = useUserUnitsFilter()
+  const { getUnitsFilter, currentUser: hookCurrentUser } = useUserUnitsFilter()
 
   useEffect(() => {
-    fetchGerentes()
-  }, [])
+    if (hookCurrentUser) {
+      fetchGerentes()
+    }
+  }, [hookCurrentUser])
 
   const fetchGerentes = async () => {
     try {

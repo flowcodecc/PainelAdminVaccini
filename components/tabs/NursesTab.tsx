@@ -14,7 +14,7 @@ import { useUserUnitsFilter } from '@/hooks/useUserUnitsFilter'
 
 export function NursesTab() {
   const { currentUser } = useUser()
-  const { getUnitsFilter, filterByUserUnits } = useUserUnitsFilter()
+  const { getUnitsFilter, filterByUserUnits, currentUser: hookCurrentUser } = useUserUnitsFilter()
   const [showDialog, setShowDialog] = useState(false)
   const [unidades, setUnidades] = useState<Unit[]>([])
   const [nurses, setNurses] = useState<NurseView[]>([])
@@ -23,9 +23,11 @@ export function NursesTab() {
   const [nurseToDelete, setNurseToDelete] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchUnidades()
-    fetchNurses()
-  }, [])
+    if (hookCurrentUser) {
+      fetchUnidades()
+      fetchNurses()
+    }
+  }, [hookCurrentUser])
 
   const fetchUnidades = async () => {
     let query = supabase

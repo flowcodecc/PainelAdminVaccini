@@ -35,15 +35,17 @@ interface UnitsTabProps {
 }
 
 export function UnitsTab({ currentUser }: UnitsTabProps) {
-  const { getUnitsFilter } = useUserUnitsFilter()
+  const { getUnitsFilter, currentUser: hookCurrentUser } = useUserUnitsFilter()
   const [units, setUnits] = useState<Unit[]>([])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false)
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
 
   useEffect(() => {
-    fetchUnits()
-  }, [])
+    if (hookCurrentUser) {
+      fetchUnits()
+    }
+  }, [hookCurrentUser])
 
 
 
