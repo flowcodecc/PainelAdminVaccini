@@ -89,10 +89,12 @@ export function AppointmentsTab() {
       .select('*')
       .eq('status', true)
 
-    // Aplica filtro de unidades se necessário
-    const unitsFilter = getUnitsFilter()
-    if (unitsFilter) {
-      query = query.in('id', unitsFilter.in)
+    // Aplica filtro de unidades apenas se NÃO for administrador
+    if (shouldFilterByUnits()) {
+      const unitsFilter = getUnitsFilter()
+      if (unitsFilter) {
+        query = query.in('id', unitsFilter.in)
+      }
     }
 
     const { data, error } = await query
@@ -136,10 +138,12 @@ export function AppointmentsTab() {
       // Extrai os IDs únicos das unidades do resultado
       let unitIds: number[] = Array.from(new Set(data.map((item: { unidade_id: number }) => item.unidade_id)))
 
-      // Filtra por unidades do usuário se necessário
-      const unitsFilter = getUnitsFilter()
-      if (unitsFilter) {
-        unitIds = unitIds.filter((id: number) => unitsFilter.in.includes(id))
+      // Filtra por unidades do usuário apenas se NÃO for administrador
+      if (shouldFilterByUnits()) {
+        const unitsFilter = getUnitsFilter()
+        if (unitsFilter) {
+          unitIds = unitIds.filter((id: number) => unitsFilter.in.includes(id))
+        }
       }
 
       if (unitIds.length === 0) {
@@ -393,10 +397,12 @@ export function AppointmentsTab() {
         `)
         .eq('status_id', 1)
 
-      // Aplica filtro de unidades se necessário
-      const unitsFilter = getUnitsFilter()
-      if (unitsFilter) {
-        query = query.in('unidade_id', unitsFilter.in)
+      // Aplica filtro de unidades apenas se NÃO for administrador
+      if (shouldFilterByUnits()) {
+        const unitsFilter = getUnitsFilter()
+        if (unitsFilter) {
+          query = query.in('unidade_id', unitsFilter.in)
+        }
       }
 
       const { data, error } = await query.order('horario', { ascending: true })
