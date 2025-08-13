@@ -134,12 +134,12 @@ export function AppointmentsTab() {
       }
 
       // Extrai os IDs únicos das unidades do resultado
-      let unitIds = Array.from(new Set(data.map((item: { unidade_id: number }) => item.unidade_id)))
+      let unitIds: number[] = Array.from(new Set(data.map((item: { unidade_id: number }) => item.unidade_id)))
 
       // Filtra por unidades do usuário se necessário
       const unitsFilter = getUnitsFilter()
       if (unitsFilter) {
-        unitIds = unitIds.filter(id => unitsFilter.in.includes(id))
+        unitIds = unitIds.filter((id: number) => unitsFilter.in.includes(id))
       }
 
       if (unitIds.length === 0) {
