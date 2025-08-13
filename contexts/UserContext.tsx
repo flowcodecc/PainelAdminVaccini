@@ -47,8 +47,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           throw userError
         }
 
-        console.log('Dados do usuário:', userData)
-
         if (userData) {
           setCurrentUser({
             id: userData.id,

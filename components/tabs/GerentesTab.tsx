@@ -10,6 +10,7 @@ import { GerenteDialog } from '@/components/dialogs/GerenteDialog'
 import { toast } from '@/components/ui/use-toast'
 import { DeleteAlertDialog } from "@/components/ui/delete-alert-dialog"
 import { useUser } from '@/contexts/UserContext'
+import { useUserUnitsFilter } from '@/hooks/useUserUnitsFilter'
 
 export function GerentesTab() {
   const [showDialog, setShowDialog] = useState(false)
@@ -18,6 +19,7 @@ export function GerentesTab() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [gerenteToDelete, setGerenteToDelete] = useState<string | null>(null)
   const { currentUser } = useUser()
+  const { getUnitsFilter } = useUserUnitsFilter()
 
   useEffect(() => {
     fetchGerentes()
@@ -25,6 +27,7 @@ export function GerentesTab() {
 
   const fetchGerentes = async () => {
     try {
+      // Primeiro busca os gerentes básicos da view
       const { data, error } = await supabase
         .from('user_unidadegerente_view')
         .select('user_id, user_name, user_email, user_is_active, unidade_names')
@@ -36,18 +39,50 @@ export function GerentesTab() {
       }
 
       if (data) {
-        const formattedGerentes = data.map(gerente => ({
-          user_id: gerente.user_id,
-          user_name: gerente.user_name,
-          user_email: gerente.user_email,
-          user_is_active: gerente.user_is_active,
-          role_id: 3,
-          unidade_names: gerente.unidade_names ? [gerente.unidade_names] : [],
-          units: []
-        }))
+        // Agora busca os units de cada gerente da tabela user
+        const gerentesWithUnits = await Promise.all(
+          data.map(async (gerente) => {
+            const { data: userData, error: userError } = await supabase
+              .from('user')
+              .select('units')
+              .eq('id', gerente.user_id)
+              .single()
 
-        console.log('Gerentes:', formattedGerentes)
-        setGerentes(formattedGerentes)
+            if (userError) {
+              console.error('Erro ao buscar units do gerente:', userError)
+              return null
+            }
+
+            return {
+              user_id: gerente.user_id,
+              user_name: gerente.user_name,
+              user_email: gerente.user_email,
+              user_is_active: gerente.user_is_active,
+              role_id: 3,
+              unidade_names: gerente.unidade_names ? [gerente.unidade_names] : [],
+              units: userData?.units || []
+            }
+          })
+        )
+
+        // Remove gerentes que não puderam ser carregados
+        const validGerentes = gerentesWithUnits.filter(g => g !== null)
+
+        // Aplica filtro de unidades para gerentes (um gerente só vê outros gerentes das suas unidades)
+        const unitsFilter = getUnitsFilter()
+        let filteredGerentes = validGerentes
+        
+        if (unitsFilter) {
+          filteredGerentes = validGerentes.filter(gerente => {
+            // Verifica se o gerente gerencia pelo menos uma das unidades permitidas
+            return gerente.units && gerente.units.some((unitId: number) => 
+              unitsFilter.in.includes(unitId)
+            )
+          })
+        }
+
+        console.log('Gerentes filtrados:', filteredGerentes)
+        setGerentes(filteredGerentes)
       }
     } catch (error) {
       console.error('Erro completo:', error)

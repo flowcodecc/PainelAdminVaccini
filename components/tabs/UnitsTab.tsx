@@ -48,15 +48,19 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
 
 
   const fetchUnits = async () => {
-    console.log('Buscando unidades...')
     let query = supabase
       .from('unidade')
       .select('*')
 
     // Aplica filtro de unidades se necessário
     const unitsFilter = getUnitsFilter()
+    console.log('UnitsTab - Filtro aplicado:', unitsFilter)
+    
     if (unitsFilter) {
+      console.log('UnitsTab - Filtrando por IDs:', unitsFilter.in)
       query = query.in('id', unitsFilter.in)
+    } else {
+      console.log('UnitsTab - Sem filtro, buscando todas as unidades')
     }
 
     const { data, error } = await query.order('id')
@@ -67,7 +71,8 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
     }
     
     if (data) {
-      console.log('Unidades encontradas:', data)
+      console.log('UnitsTab - Resultado:', data.length, 'unidades encontradas')
+      console.log('UnitsTab - IDs retornados:', data.map(u => u.id))
       setUnits(data)
     }
   }

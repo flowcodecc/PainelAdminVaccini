@@ -55,7 +55,7 @@ interface Appointment {
 }
 
 export function AppointmentsTab() {
-  const { getUnitsFilter, shouldFilterByUnits } = useUserUnitsFilter()
+  const { getUnitsFilter, shouldFilterByUnits, currentUser } = useUserUnitsFilter()
   const [units, setUnits] = useState<Unit[]>([])
   const [patients, setPatients] = useState<Patient[]>([])
   const [selectedUnit, setSelectedUnit] = useState<number>(0)
@@ -89,12 +89,10 @@ export function AppointmentsTab() {
       .select('*')
       .eq('status', true)
 
-    // Aplica filtro de unidades apenas se NÃO for administrador
-    if (shouldFilterByUnits()) {
-      const unitsFilter = getUnitsFilter()
-      if (unitsFilter) {
-        query = query.in('id', unitsFilter.in)
-      }
+    // Aplica filtro de unidades se necessário
+    const unitsFilter = getUnitsFilter()
+    if (unitsFilter) {
+      query = query.in('id', unitsFilter.in)
     }
 
     const { data, error } = await query
@@ -103,6 +101,7 @@ export function AppointmentsTab() {
       console.error('Erro ao buscar unidades:', error)
       return
     }
+    
     setUnits(data || [])
   }
 
@@ -138,12 +137,10 @@ export function AppointmentsTab() {
       // Extrai os IDs únicos das unidades do resultado
       let unitIds: number[] = Array.from(new Set(data.map((item: { unidade_id: number }) => item.unidade_id)))
 
-      // Filtra por unidades do usuário apenas se NÃO for administrador
-      if (shouldFilterByUnits()) {
-        const unitsFilter = getUnitsFilter()
-        if (unitsFilter) {
-          unitIds = unitIds.filter((id: number) => unitsFilter.in.includes(id))
-        }
+      // Filtra por unidades do usuário se necessário
+      const unitsFilter = getUnitsFilter()
+      if (unitsFilter) {
+        unitIds = unitIds.filter((id: number) => unitsFilter.in.includes(id))
       }
 
       if (unitIds.length === 0) {
@@ -397,12 +394,10 @@ export function AppointmentsTab() {
         `)
         .eq('status_id', 1)
 
-      // Aplica filtro de unidades apenas se NÃO for administrador
-      if (shouldFilterByUnits()) {
-        const unitsFilter = getUnitsFilter()
-        if (unitsFilter) {
-          query = query.in('unidade_id', unitsFilter.in)
-        }
+      // Aplica filtro de unidades se necessário
+      const unitsFilter = getUnitsFilter()
+      if (unitsFilter) {
+        query = query.in('unidade_id', unitsFilter.in)
       }
 
       const { data, error } = await query.order('horario', { ascending: true })
@@ -854,17 +849,25 @@ export function AppointmentsTab() {
     fetchPatients()
     fetchPaymentMethods()
     fetchVaccines()
-    fetchAppointments()
   }, [])
 
-  // Atualiza a lista de unidades quando um paciente é selecionado
+  // Reexecuta fetchAppointments quando currentUser mudar
   useEffect(() => {
-    if (selectedPatient) {
-      fetchUnitsForPatient(selectedPatient)
-    } else {
-      fetchUnits()
+    if (currentUser) {
+      fetchAppointments()
     }
-  }, [selectedPatient])
+  }, [currentUser])
+
+  // Atualiza a lista de unidades quando um paciente é selecionado OU quando currentUser mudar
+  useEffect(() => {
+    if (currentUser) {
+      if (selectedPatient) {
+        fetchUnitsForPatient(selectedPatient)
+      } else {
+        fetchUnits()
+      }
+    }
+  }, [selectedPatient, currentUser])
 
   useEffect(() => {
     const total = selectedVaccines.reduce((sum, { vaccineId }) => {
