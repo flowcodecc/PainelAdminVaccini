@@ -6,7 +6,7 @@ export const validateUnitCep = async (unitId: number, cep: string) => {
     const { data: ranges, error } = await supabase
       .from('unidade_ceps_atende')
       .select('*')
-      .eq('"unidade_id (FK)"', unitId)
+      .eq('unidade_id', unitId)
 
     if (error) {
       console.error('Erro ao buscar faixas de CEP:', error)
@@ -47,8 +47,8 @@ export const validateUnitCep = async (unitId: number, cep: string) => {
             cidade
           )
         `)
-        .gte('cep_inicial', cleanCep)
-        .lte('cep_final', cleanCep)
+        .lte('cep_inicial', cleanCep)
+        .gte('cep_final', cleanCep)
 
       return {
         isValid: false,

@@ -85,15 +85,41 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
 
   const handleDelete = async (id: number) => {
     try {
-      // Primeiro exclui os horários
+      console.log(`Iniciando exclusão da unidade ${id}`)
+
+      // 1. Primeiro exclui os CEPs não atendidos (se a tabela existir)
+      console.log('Excluindo CEPs não atendidos...')
+      const { error: cepsNaoAtendeError } = await supabase
+        .from('unidade_ceps_nao_atende')
+        .delete()
+        .eq('unidade_id', id)
+
+      if (cepsNaoAtendeError && cepsNaoAtendeError.code !== '42P01') {
+        throw cepsNaoAtendeError
+      }
+
+      // 2. Exclui os CEPs atendidos (tabela principal que causa o erro)
+      console.log('Excluindo CEPs atendidos...')
+      const { error: cepsAtendeError } = await supabase
+        .from('unidade_ceps_atende')
+        .delete()
+        .eq('unidade_id', id)
+
+      if (cepsAtendeError) throw cepsAtendeError
+
+      // 3. Exclui os horários da unidade (se a tabela existir)
+      console.log('Excluindo horários...')
       const { error: scheduleError } = await supabase
         .from('unit_schedules')
         .delete()
         .eq('unit_id', id)
 
-      if (scheduleError) throw scheduleError
+      if (scheduleError && scheduleError.code !== '42P01') {
+        throw scheduleError
+      }
 
-      // Depois exclui a unidade
+      // 4. Por último, exclui a unidade
+      console.log('Excluindo unidade...')
       const { error: unitError } = await supabase
         .from('unidade')
         .delete()
@@ -101,6 +127,7 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
 
       if (unitError) throw unitError
 
+      console.log('Unidade excluída com sucesso!')
       toast({
         title: "Sucesso!",
         description: "Unidade excluída com sucesso",
@@ -111,7 +138,7 @@ export function UnitsTab({ currentUser }: UnitsTabProps) {
       console.error('Erro ao excluir:', error)
       toast({
         title: "Erro",
-        description: "Erro ao excluir unidade. Tente novamente.",
+        description: `Erro ao excluir unidade: ${error.message}`,
       })
     }
   }

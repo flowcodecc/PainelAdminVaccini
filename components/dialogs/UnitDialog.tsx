@@ -200,8 +200,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
           cep_inicial: range.cep_inicial || '',
           cep_final: range.cep_final || '',
           faixa_excluida: '',
-          cep_base: '',
-          tipo: 'atende'
+          cep_base: ''
         }))
       }
 
@@ -212,8 +211,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
           cep_inicial: '',
           cep_final: '',
           faixa_excluida: naoAtende.faixa_excluida || '',
-          cep_base: naoAtende.cep_base || '',
-          tipo: 'nao_atende'
+          cep_base: naoAtende.cep_base || ''
         }))
         formattedRanges = [...formattedRanges, ...rangesNaoAtende]
       }
@@ -237,7 +235,8 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = async (e?: React.FormEvent) => {
+    e?.preventDefault()
     try {
       let unitId: number;
 
@@ -450,7 +449,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
           <DialogTitle>{unit ? 'Editar Unidade' : 'Nova Unidade'}</DialogTitle>
         </DialogHeader>
 
-        <form className="space-y-6">
+        <form className="space-y-6" onSubmit={handleSave}>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="nome">Nome</Label>
@@ -698,7 +697,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit" onClick={handleSave}>
+            <Button type="button" onClick={handleSave}>
               {unit ? 'Salvar Alterações' : 'Criar Unidade'}
             </Button>
           </div>
