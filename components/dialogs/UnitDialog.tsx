@@ -20,20 +20,16 @@ interface UnitDialogProps {
   healthPlans: HealthPlan[]
 }
 
-interface OriginalCepRange {
-  cep_inicial?: string;
-  cep_final?: string;
-  cep_base?: string;
-  faixa_excluida?: string;
-}
-
-interface CepRange {
+interface CepAtendido {
   id?: number;
   cep_inicial: string;
   cep_final: string;
+}
+
+interface CepExcluido {
+  id?: number;
+  cep_base: string;
   faixa_excluida: string;
-  cep_base?: string;
-  original?: OriginalCepRange;
 }
 
 const DAYS = [
@@ -77,7 +73,8 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
     horario_fim: ''
   })
 
-  const [cepRanges, setCepRanges] = useState<CepRange[]>([])
+  const [cepsAtendidos, setCepsAtendidos] = useState<CepAtendido[]>([])
+  const [cepsExcluidos, setCepsExcluidos] = useState<CepExcluido[]>([])
   const [newBlockedCep, setNewBlockedCep] = useState('')
   const [blockedCeps, setBlockedCeps] = useState<string[]>([])
 
@@ -87,7 +84,8 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
       setNewUnit(unit)
       fetchCepRanges(unit.id)
     } else {
-      setCepRanges([])
+      setCepsAtendidos([])
+      setCepsExcluidos([])
     }
   }, [unit])
 
@@ -103,53 +101,61 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
     setSchedules(prev => ({ ...prev, [field]: value }))
   }
 
-  const handleAddCepRange = () => {
-    setCepRanges([...cepRanges, { 
+  const handleAddCepAtendido = () => {
+    setCepsAtendidos([...cepsAtendidos, { 
       cep_inicial: '', 
-      cep_final: '', 
-      faixa_excluida: '',
-      cep_base: ''
+      cep_final: ''
     }])
   }
 
-  const handleRemoveCepRange = async (index: number, id?: number) => {
+  const handleAddCepExcluido = () => {
+    setCepsExcluidos([...cepsExcluidos, { 
+      cep_base: '', 
+      faixa_excluida: ''
+    }])
+  }
+
+  const handleRemoveCepAtendido = async (index: number, id?: number) => {
     try {
-      // Se tem ID, remove do banco
       if (id) {
-        const range = cepRanges[index]
-        
-        // Verifica se é um CEP atendido ou não atendido
-        if (range.cep_inicial && range.cep_final) {
-          // Remove da tabela de CEPs atendidos
-          const { error } = await supabase
-            .from('unidade_ceps_atende')
-            .delete()
-            .eq('id', id)
-            
-          if (error) {
-            console.error('Erro ao remover CEP atendido:', error)
-            return
-          }
-        } else if (range.cep_base && range.faixa_excluida) {
-          // Remove da tabela de CEPs não atendidos
-          const { error } = await supabase
-            .from('unidade_ceps_nao_atende')
-            .delete()
-            .eq('id', id)
-            
-          if (error) {
-            console.error('Erro ao remover CEP não atendido:', error)
-            return
-          }
+        const { error } = await supabase
+          .from('unidade_ceps_atende')
+          .delete()
+          .eq('id', id)
+          
+        if (error) {
+          console.error('Erro ao remover CEP atendido:', error)
+          return
         }
       }
 
-      // Remove do estado local
-      const newRanges = [...cepRanges]
-      newRanges.splice(index, 1)
-      setCepRanges(newRanges)
+      const newCeps = [...cepsAtendidos]
+      newCeps.splice(index, 1)
+      setCepsAtendidos(newCeps)
     } catch (error) {
-      console.error('Erro ao remover CEP:', error)
+      console.error('Erro ao remover CEP atendido:', error)
+    }
+  }
+
+  const handleRemoveCepExcluido = async (index: number, id?: number) => {
+    try {
+      if (id) {
+        const { error } = await supabase
+          .from('unidade_ceps_nao_atende')
+          .delete()
+          .eq('id', id)
+          
+        if (error) {
+          console.error('Erro ao remover CEP excluído:', error)
+          return
+        }
+      }
+
+      const newCeps = [...cepsExcluidos]
+      newCeps.splice(index, 1)
+      setCepsExcluidos(newCeps)
+    } catch (error) {
+      console.error('Erro ao remover CEP excluído:', error)
     }
   }
 
@@ -191,36 +197,29 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
         return
       }
 
-      let formattedRanges: CepRange[] = []
-
       // Formata os CEPs atendidos
-      if (cepRangesData) {
-        formattedRanges = cepRangesData.map(range => ({
-          id: range.id,
-          cep_inicial: range.cep_inicial || '',
-          cep_final: range.cep_final || '',
-          faixa_excluida: '',
-          cep_base: ''
-        }))
-      }
+      const formattedCepsAtendidos: CepAtendido[] = cepRangesData?.map(range => ({
+        id: range.id,
+        cep_inicial: range.cep_inicial || '',
+        cep_final: range.cep_final || ''
+      })) || []
 
-      // Adiciona os CEPs não atendidos
-      if (cepsNaoAtendeData) {
-        const rangesNaoAtende = cepsNaoAtendeData.map(naoAtende => ({
-          id: naoAtende.id,
-          cep_inicial: '',
-          cep_final: '',
-          faixa_excluida: naoAtende.faixa_excluida || '',
-          cep_base: naoAtende.cep_base || ''
-        }))
-        formattedRanges = [...formattedRanges, ...rangesNaoAtende]
-      }
+      // Formata os CEPs excluídos
+      const formattedCepsExcluidos: CepExcluido[] = cepsNaoAtendeData?.map(excluido => ({
+        id: excluido.id,
+        cep_base: excluido.cep_base || '',
+        faixa_excluida: excluido.faixa_excluida || ''
+      })) || []
 
-      console.log('CEPs formatados:', formattedRanges)
-      setCepRanges(formattedRanges)
+      console.log('CEPs atendidos:', formattedCepsAtendidos)
+      console.log('CEPs excluídos:', formattedCepsExcluidos)
+      
+      setCepsAtendidos(formattedCepsAtendidos)
+      setCepsExcluidos(formattedCepsExcluidos)
     } catch (error) {
       console.error('Erro completo:', error)
-      setCepRanges([])
+      setCepsAtendidos([])
+      setCepsExcluidos([])
     }
   }
 
@@ -294,20 +293,17 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
         unitId = data.id
       }
 
-      // 2. Processa as faixas de CEP
-      if (cepRanges.length > 0) {
-        // Primeiro processa os CEPs atendidos para ter os IDs
-        const cepsAtendidos = cepRanges
-          .filter(range => range.cep_inicial && range.cep_final)
-          .map(range => ({
-            ...range,
-            unidade_id: unitId,
-            cep_inicial: range.cep_inicial.padStart(5, '0').slice(0, 5),
-            cep_final: range.cep_final.padStart(5, '0').slice(0, 5)
-          }))
+      // 2. Processa as faixas de CEP atendidos
+      if (cepsAtendidos.length > 0) {
+        const processedCepsAtendidos = cepsAtendidos.map(cep => ({
+          ...cep,
+          unidade_id: unitId,
+          cep_inicial: cep.cep_inicial.padStart(5, '0').slice(0, 5),
+          cep_final: cep.cep_final.padStart(5, '0').slice(0, 5)
+        }))
 
-        // Processa os CEPs atendidos primeiro para obter os IDs
-        for (const cep of cepsAtendidos) {
+        // Processa os CEPs atendidos
+        for (const cep of processedCepsAtendidos) {
           try {
             if (cep.id) {
               // Se tem ID, faz update
@@ -341,61 +337,47 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
                 throw error
               }
 
-              // Atualiza o ID no objeto local
+              // Atualiza o ID no objeto local para uso nas faixas excluídas
               cep.id = data.id
+              
+              // Atualiza também no estado para manter consistência
+              const cepIndex = cepsAtendidos.findIndex(c => 
+                c.cep_inicial === cep.cep_inicial && c.cep_final === cep.cep_final && !c.id
+              )
+              if (cepIndex >= 0) {
+                const newCepsAtendidos = [...cepsAtendidos]
+                newCepsAtendidos[cepIndex] = { ...newCepsAtendidos[cepIndex], id: data.id }
+                setCepsAtendidos(newCepsAtendidos)
+              }
             }
           } catch (error) {
             console.error('Erro ao processar CEP atendido:', error)
             throw error
           }
         }
+      }
 
-        // Agora processa os CEPs não atendidos
-        const cepsNaoAtendidos = cepRanges
-          .filter(range => range.cep_base && range.faixa_excluida)
-          .map(range => {
-            // Encontra o CEP atendido correspondente baseado no cep_base
-            const cepBase = range.cep_base || ''
-            const cepAtendido = cepsAtendidos.find(cep => 
-              parseInt(cep.cep_inicial) <= parseInt(cepBase) && 
-              parseInt(cep.cep_final) >= parseInt(cepBase)
-            )
-
-            if (!cepAtendido) {
-              console.error('CEP atendido não encontrado para o CEP base:', cepBase)
-            }
-
-            return {
-              ...range,
-              unidade_id: unitId,
-              cep_base: cepBase.padStart(5, '0').slice(0, 5),
-              faixa_excluida: (range.faixa_excluida || '').padStart(3, '0').slice(0, 3),
-              cep_atende_id: cepAtendido?.id
-            }
-          })
-
-        // Processa os CEPs não atendidos
-        for (const cep of cepsNaoAtendidos) {
+      // 3. Processa as faixas de CEP excluídas
+      if (cepsExcluidos.length > 0) {
+        for (const cepExcluido of cepsExcluidos) {
           try {
-            if (!cep.cep_atende_id) {
-              console.error('CEP não atendido sem vínculo com CEP atendido:', cep)
-              continue
-            }
+            // Prepara os dados
+            const cepBase = cepExcluido.cep_base.padStart(5, '0').slice(0, 5)
+            const faixaExcluida = cepExcluido.faixa_excluida.padStart(4, '0').slice(0, 4)
 
-            if (cep.id) {
+            if (cepExcluido.id) {
               // Se tem ID, faz update
               const { error } = await supabase
                 .from('unidade_ceps_nao_atende')
                 .update({
-                  cep_base: cep.cep_base,
-                  faixa_excluida: cep.faixa_excluida,
-                  unidade_id: unitId,
-                  cep_atende_id: cep.cep_atende_id
+                  cep_base: cepBase,
+                  faixa_excluida: faixaExcluida,
+                  unidade_id: unitId
                 })
-                .eq('id', cep.id)
+                .eq('id', cepExcluido.id)
 
               if (error) {
-                console.error('Erro ao atualizar CEP não atendido:', error)
+                console.error('Erro ao atualizar CEP excluído:', error)
                 throw error
               }
             } else {
@@ -404,18 +386,17 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
                 .from('unidade_ceps_nao_atende')
                 .insert({
                   unidade_id: unitId,
-                  cep_base: cep.cep_base,
-                  faixa_excluida: cep.faixa_excluida,
-                  cep_atende_id: cep.cep_atende_id
+                  cep_base: cepBase,
+                  faixa_excluida: faixaExcluida
                 })
 
               if (error) {
-                console.error('Erro ao inserir novo CEP não atendido:', error)
+                console.error('Erro ao inserir novo CEP excluído:', error)
                 throw error
               }
             }
           } catch (error) {
-            console.error('Erro ao processar CEP não atendido:', error)
+            console.error('Erro ao processar CEP excluído:', error)
             throw error
           }
         }
@@ -588,94 +569,55 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
 
           {/* Faixas de CEP atendidas */}
           <div>
-            <h2 className="text-lg font-bold mb-4">CEPs atendidos</h2>
+            <h2 className="text-lg font-bold mb-4">CEPs Atendidos</h2>
             <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-              {cepRanges.map((range, index) => (
-                <div key={range.id} className="p-4 bg-white rounded-lg border">
+              {cepsAtendidos.map((cep, index) => (
+                <div key={cep.id || `new-${index}`} className="p-4 bg-white rounded-lg border">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium">Faixa {index + 1}</span>
                     <Button 
                       type="button"
                       variant="ghost" 
                       size="sm"
-                      onClick={() => handleRemoveCepRange(index, range.id)}
+                      onClick={() => handleRemoveCepAtendido(index, cep.id)}
                     >
                       <X className="h-4 w-4 text-gray-500" />
                     </Button>
                   </div>
-                  <div>
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <Label>CEP Inicial</Label>
-                        <Input
-                          value={range.cep_inicial}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 5)
-                            const newRanges = [...cepRanges]
-                            newRanges[index] = {
-                              ...newRanges[index],
-                              cep_inicial: value
-                            }
-                            setCepRanges(newRanges)
-                          }}
-                          maxLength={5}
-                          placeholder="00000"
-                        />
-                      </div>
-                      <div>
-                        <Label>CEP Final</Label>
-                        <Input
-                          value={range.cep_final}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 5)
-                            const newRanges = [...cepRanges]
-                            newRanges[index] = {
-                              ...newRanges[index],
-                              cep_final: value
-                            }
-                            setCepRanges(newRanges)
-                          }}
-                          maxLength={5}
-                          placeholder="00000"
-                        />
-                      </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>CEP Inicial</Label>
+                      <Input
+                        value={cep.cep_inicial}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 5)
+                          const newCeps = [...cepsAtendidos]
+                          newCeps[index] = {
+                            ...newCeps[index],
+                            cep_inicial: value
+                          }
+                          setCepsAtendidos(newCeps)
+                        }}
+                        maxLength={5}
+                        placeholder="00000"
+                      />
                     </div>
-                    <h3 className="text-sm font-semibold mb-2">Faixa que não atende no CEP:</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label>CEP Base</Label>
-                        <Input
-                          value={range.cep_base || ''}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 5)
-                            const newRanges = [...cepRanges]
-                            newRanges[index] = {
-                              ...newRanges[index],
-                              cep_base: value
-                            }
-                            setCepRanges(newRanges)
-                          }}
-                          maxLength={5}
-                          placeholder="00000"
-                        />
-                      </div>
-                      <div>
-                        <Label>Faixa Excluída</Label>
-                        <Input
-                          value={range.faixa_excluida}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 3)
-                            const newRanges = [...cepRanges]
-                            newRanges[index] = {
-                              ...newRanges[index],
-                              faixa_excluida: value
-                            }
-                            setCepRanges(newRanges)
-                          }}
-                          maxLength={3}
-                          placeholder="000"
-                        />
-                      </div>
+                    <div>
+                      <Label>CEP Final</Label>
+                      <Input
+                        value={cep.cep_final}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 5)
+                          const newCeps = [...cepsAtendidos]
+                          newCeps[index] = {
+                            ...newCeps[index],
+                            cep_final: value
+                          }
+                          setCepsAtendidos(newCeps)
+                        }}
+                        maxLength={5}
+                        placeholder="00000"
+                      />
                     </div>
                   </div>
                 </div>
@@ -685,10 +627,81 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
                 type="button"
                 variant="ghost" 
                 className="w-full flex items-center justify-center gap-2 text-gray-600"
-                onClick={handleAddCepRange}
+                onClick={handleAddCepAtendido}
               >
                 <PlusCircle className="h-4 w-4" />
-                Adicionar Faixa de CEP
+                Adicionar Faixa de CEP Atendido
+              </Button>
+            </div>
+          </div>
+
+          {/* Faixas de CEP excluídas */}
+          <div>
+            <h2 className="text-lg font-bold mb-4">CEPs Excluídos</h2>
+            <div className="bg-red-50 p-4 rounded-lg space-y-4">
+              <p className="text-sm text-gray-600 mb-4">
+                Estas são faixas específicas de CEP que não são atendidas dentro das faixas de CEP atendidas acima.
+              </p>
+              {cepsExcluidos.map((cep, index) => (
+                <div key={cep.id || `excluido-${index}`} className="p-4 bg-white rounded-lg border border-red-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium">Faixa Excluída {index + 1}</span>
+                    <Button 
+                      type="button"
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => handleRemoveCepExcluido(index, cep.id)}
+                    >
+                      <X className="h-4 w-4 text-gray-500" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>CEP Base</Label>
+                      <Input
+                        value={cep.cep_base}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 5)
+                          const newCeps = [...cepsExcluidos]
+                          newCeps[index] = {
+                            ...newCeps[index],
+                            cep_base: value
+                          }
+                          setCepsExcluidos(newCeps)
+                        }}
+                        maxLength={5}
+                        placeholder="00000"
+                      />
+                    </div>
+                    <div>
+                      <Label>Faixa Excluída</Label>
+                      <Input
+                        value={cep.faixa_excluida}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 4)
+                          const newCeps = [...cepsExcluidos]
+                          newCeps[index] = {
+                            ...newCeps[index],
+                            faixa_excluida: value
+                          }
+                          setCepsExcluidos(newCeps)
+                        }}
+                        maxLength={4}
+                        placeholder="0000"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <Button 
+                type="button"
+                variant="ghost" 
+                className="w-full flex items-center justify-center gap-2 text-red-600"
+                onClick={handleAddCepExcluido}
+              >
+                <PlusCircle className="h-4 w-4" />
+                Adicionar Faixa de CEP Excluída
               </Button>
             </div>
           </div>
