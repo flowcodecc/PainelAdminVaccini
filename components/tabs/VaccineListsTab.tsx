@@ -200,10 +200,13 @@ export function VaccineListsTab({ currentUser: propCurrentUser }: VaccineListsTa
   }
 
   const handleImportList = async (listId: number) => {
-    console.log('Tentando importar lista:', listId)
-    console.log('Current user:', currentUser)
-    console.log('isAdmin:', isAdmin)
-    console.log('isManager:', isManager)
+    if (!currentUser) {
+      toast({
+        title: "Erro",
+        description: "Usuário não autenticado",
+      })
+      return
+    }
     
     try {
       let unitId: number
@@ -224,25 +227,17 @@ export function VaccineListsTab({ currentUser: propCurrentUser }: VaccineListsTa
           return
         }
         unitId = units[0].id
-        console.log('Admin - usando unidade:', unitId)
       } else {
         // Para gerentes, usar suas unidades
-        console.log('Verificando unidades do gerente...')
-        console.log('currentUser.units:', currentUser?.units)
-        
-        if (!currentUser?.units?.length) {
+        if (!currentUser.units?.length) {
           // Buscar unidades diretamente do banco se não estiver no contexto
-          console.log('Buscando unidades do banco...')
           const { data: userFromDB } = await supabase
             .from('user')
             .select('units')
-            .eq('id', currentUser?.id)
+            .eq('id', currentUser.id)
             .single()
           
-          console.log('Unidades do banco:', userFromDB?.units)
-          
           if (!userFromDB?.units?.length) {
-            console.log('Gerente sem unidades associadas no banco')
             toast({
               title: "Erro",
               description: "Você não possui unidades associadas",
@@ -258,7 +253,6 @@ export function VaccineListsTab({ currentUser: propCurrentUser }: VaccineListsTa
           const firstUnit = currentUser.units[0]
           unitId = typeof firstUnit === 'string' ? parseInt(firstUnit) : firstUnit
         }
-        console.log('Gerente - usando unidade:', unitId, 'tipo:', typeof unitId)
       }
 
       // Verificar se já foi importada
