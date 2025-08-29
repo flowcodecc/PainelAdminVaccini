@@ -99,15 +99,19 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
         throw new Error('Erro ao verificar dependências da vacina')
       }
 
-      const allDependencies = []
+      const allDependencies: string[] = []
       
       if (listDependencies && listDependencies.length > 0) {
-        const listNames = listDependencies.map(dep => dep.vaccine_list?.nome).filter(Boolean)
+        const listNames = listDependencies
+          .map((dep: any) => dep.vaccine_list?.nome)
+          .filter((name: any): name is string => Boolean(name))
         allDependencies.push(...listNames.map(name => `Lista: ${name}`))
       }
 
       if (unitDependencies && unitDependencies.length > 0) {
-        const unitNames = unitDependencies.map(dep => dep.unidade?.nome).filter(Boolean)
+        const unitNames = unitDependencies
+          .map((dep: any) => dep.unidade?.nome)
+          .filter((name: any): name is string => Boolean(name))
         allDependencies.push(...unitNames.map(name => `Unidade: ${name}`))
       }
 
@@ -239,13 +243,17 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
           continue
         }
 
-        const allDependencies = []
+        const allDependencies: string[] = []
         if (listDependencies && listDependencies.length > 0) {
-          const listNames = listDependencies.map(dep => dep.vaccine_list?.nome).filter(Boolean)
+          const listNames = listDependencies
+            .map((dep: any) => dep.vaccine_list?.nome)
+            .filter((name: any): name is string => Boolean(name))
           allDependencies.push(...listNames.map(name => `Lista: ${name}`))
         }
         if (unitDependencies && unitDependencies.length > 0) {
-          const unitNames = unitDependencies.map(dep => dep.unidade?.nome).filter(Boolean)
+          const unitNames = unitDependencies
+            .map((dep: any) => dep.unidade?.nome)
+            .filter((name: any): name is string => Boolean(name))
           allDependencies.push(...unitNames.map(name => `Unidade: ${name}`))
         }
 
