@@ -48,6 +48,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (userData) {
+          console.log('UserContext - userData do banco:', userData)
+          console.log('UserContext - userData.units:', userData.units)
+          
           setCurrentUser({
             id: userData.id,
             email: userData.email,

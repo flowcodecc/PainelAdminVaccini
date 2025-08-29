@@ -112,4 +112,51 @@ export interface VaccineScheme {
   dose_5: boolean
 }
 
+export interface VaccineList {
+  id: number
+  nome: string
+  descricao?: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  status: boolean
+  is_template: boolean
+  items?: VaccineListItem[]
+  creator_name?: string
+}
+
+export interface VaccineListItem {
+  id: number
+  vaccine_list_id: number
+  vaccine_id: number
+  preco_customizado?: number
+  created_at: string
+  vaccine?: Vaccine
+}
+
+export interface UnitVaccineList {
+  id: number
+  unidade_id: number
+  vaccine_list_id: number
+  imported_by: string
+  imported_at: string
+  is_active: boolean
+  vaccine_list?: VaccineList
+  unit_name?: string
+  imported_by_name?: string
+}
+
+export interface UnitVaccine {
+  id: number
+  unidade_id: number
+  vaccine_list_id: number
+  vaccine_id: number
+  preco_customizado?: number
+  imported_from_list_id: number
+  created_at: string
+  is_active: boolean
+  vaccine?: Vaccine
+  unit_name?: string
+}
+
 export * from './types/payment' 

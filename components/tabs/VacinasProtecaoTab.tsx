@@ -3,6 +3,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { VaccinesTab } from "./VaccinesTab"
 import { ProtecaoVacinasTab } from "./ProtecaoVacinasTab"
+import { VaccineListsTab } from "./VaccineListsTab"
 import { User } from "@/types"
 import { PlanoVacinacaoTab } from "./PlanoVacinacaoTab"
 
@@ -20,6 +21,7 @@ export function VacinasProtecaoTab({ currentUser }: VacinasProtecaoTabProps) {
           <TabsTrigger value="vacinas">Gerenciar Vacinas</TabsTrigger>
           <TabsTrigger value="plano">Plano de Vacinação</TabsTrigger>
           <TabsTrigger value="protecoes">Proteções do Mês</TabsTrigger>
+          <TabsTrigger value="listas">Listas de Vacinas</TabsTrigger>
         </TabsList>
         
         <TabsContent value="vacinas">
@@ -32,6 +34,10 @@ export function VacinasProtecaoTab({ currentUser }: VacinasProtecaoTabProps) {
         
         <TabsContent value="protecoes">
           <ProtecaoVacinasTab />
+        </TabsContent>
+        
+        <TabsContent value="listas">
+          <VaccineListsTab currentUser={currentUser} />
         </TabsContent>
       </Tabs>
     </div>
