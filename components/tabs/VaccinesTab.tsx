@@ -30,10 +30,12 @@ interface Vaccine {
   preco: number
   status: string
   total_doses?: number
+  unidade_id?: number
+  unit_vaccine_id?: number
 }
 
 export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {}) {
-  const { getUnitsFilter } = useUserUnitsFilter()
+  const { getUnitsFilter, shouldFilterByUnits } = useUserUnitsFilter()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [vaccines, setVaccines] = useState<Vaccine[]>([])
   const [selectedVaccine, setSelectedVaccine] = useState<Vaccine | undefined>()
@@ -50,13 +52,58 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
   }, [])
 
   const fetchVaccines = async () => {
-    const { data } = await supabase
-      .from('vw_vacinas_esquemas')
-      .select('*')
-      .order('vacina_id', { ascending: true })
-    
-    if (data) {
-      setVaccines(data)
+    try {
+      const unitsFilter = getUnitsFilter()
+      
+      // Se há filtro de unidades (gerente/enfermeira), buscar apenas vacinas importadas para essas unidades
+      if (unitsFilter && unitsFilter.in.length > 0) {
+        const { data, error } = await supabase
+          .from('unit_vaccines')
+          .select(`
+            id,
+            vaccine_id,
+            unidade_id,
+            preco_customizado,
+            vaccine:ref_vacinas!vaccine_id(
+              ref_vacinasID,
+              nome,
+              preco,
+              status
+            )
+          `)
+          .eq('is_active', true)
+          .in('unidade_id', unitsFilter.in)
+          .order('vaccine_id', { ascending: true })
+
+        if (error) {
+          console.error('Erro ao buscar vacinas da unidade:', error)
+          return
+        }
+
+        // Transformar os dados para o formato esperado
+        const formattedVaccines = data?.map(item => ({
+          vacina_id: item.vaccine?.ref_vacinasID || 0,
+          vacina_nome: item.vaccine?.nome || '',
+          preco: item.preco_customizado || item.vaccine?.preco || 0,
+          status: item.vaccine?.status ? 'Ativo' : 'Inativo',
+          unidade_id: item.unidade_id,
+          unit_vaccine_id: item.id
+        })) || []
+
+        setVaccines(formattedVaccines)
+      } else {
+        // Admin ou contexto global - buscar todas as vacinas do sistema
+        const { data } = await supabase
+          .from('vw_vacinas_esquemas')
+          .select('*')
+          .order('vacina_id', { ascending: true })
+        
+        if (data) {
+          setVaccines(data)
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao buscar vacinas:', error)
     }
   }
 
@@ -314,9 +361,18 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
   return (
     <div>
       <div className="flex justify-between mb-4">
-        <h2 className="text-2xl font-bold">Vacinas</h2>
+        <div>
+          <h2 className="text-2xl font-bold">
+            {shouldFilterByUnits() ? 'Vacinas da Unidade' : 'Gerenciar Vacinas'}
+          </h2>
+          {shouldFilterByUnits() && (
+            <p className="text-sm text-gray-600 mt-1">
+              Exibindo apenas vacinas importadas para suas unidades
+            </p>
+          )}
+        </div>
         <div className="flex gap-2">
-          {selectedVaccines.length > 0 && (
+          {selectedVaccines.length > 0 && !shouldFilterByUnits() && (
             <Button 
               variant="destructive" 
               onClick={() => setBulkDeleteDialogOpen(true)}
@@ -324,9 +380,16 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
               Excluir Selecionadas ({selectedVaccines.length})
             </Button>
           )}
-          <Button onClick={() => setIsDialogOpen(true)}>
-            Adicionar Vacina
-          </Button>
+          {!shouldFilterByUnits() && (
+            <Button onClick={() => setIsDialogOpen(true)}>
+              Adicionar Vacina
+            </Button>
+          )}
+          {shouldFilterByUnits() && vaccines.length === 0 && (
+            <div className="text-sm text-gray-500">
+              Importe vacinas através da aba "Listas de Vacinas"
+            </div>
+          )}
         </div>
       </div>
 
@@ -389,6 +452,13 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
           ))}
         </TableBody>
       </Table>
+
+      {shouldFilterByUnits() && vaccines.length === 0 && (
+        <div className="text-center py-8 text-muted-foreground">
+          <p>Nenhuma vacina importada para suas unidades.</p>
+          <p className="text-sm mt-2">Use a aba "Listas de Vacinas" para importar vacinas.</p>
+        </div>
+      )}
 
       <VaccineDialog 
         isOpen={isDialogOpen}
