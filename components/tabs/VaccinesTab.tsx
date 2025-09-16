@@ -81,7 +81,7 @@ export function VaccinesTab({ currentUser, onPriceChange }: VaccinesTabProps = {
         }
 
         // Transformar os dados para o formato esperado
-        const formattedVaccines = data?.map(item => ({
+        const formattedVaccines = data?.map((item: any) => ({
           vacina_id: item.vaccine?.ref_vacinasID || 0,
           vacina_nome: item.vaccine?.nome || '',
           preco: item.preco_customizado || item.vaccine?.preco || 0,

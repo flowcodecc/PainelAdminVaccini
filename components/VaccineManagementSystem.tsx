@@ -14,13 +14,14 @@ import { AppointmentsTab } from './tabs/AppointmentsTab'
 import { NursesTab } from './tabs/NursesTab'
 import { PatientTab } from './tabs/PatientTab'
 import { User } from '../types'
-import { Menu, Home, Syringe, HeartPulse, Calendar, Users, UserCircle, Briefcase } from 'lucide-react'
+import { Menu, Home, Syringe, HeartPulse, Calendar, Users, UserCircle, Briefcase, Building2 } from 'lucide-react'
 import { Skeleton } from "@/components/ui/skeleton"
 import Image from 'next/image'
 import { LoginScreen } from './LoginScreen'
 import { supabase } from '../lib/supabase'
 import { VacinasProtecaoTab } from './tabs/VacinasProtecaoTab'
 import { GerentesTab } from './tabs/GerentesTab'
+import { ConveniosTab } from './tabs/ConveniosTab'
 import { useUser } from "@/contexts/UserContext"
 
 export function VaccineManagementSystem() {
@@ -83,13 +84,14 @@ export function VaccineManagementSystem() {
     const managerItems = [
       { id: 3, value: "vaccines", label: "Vacinas", icon: Syringe },
       { id: 4, value: "health-plans", label: "Planos de Saúde", icon: HeartPulse },
-      { id: 5, value: "units", label: "Unidades", icon: Home },
+      { id: 5, value: "convenios", label: "Convênios", icon: Building2 },
+      { id: 6, value: "units", label: "Unidades", icon: Home },
     ]
 
     // Itens exclusivos do admin
     const adminItems = [
-      { id: 6, value: "nurses", label: "Enfermeiras", icon: Users },
-      { id: 7, value: "gerentes", label: "Gerentes", icon: Briefcase }
+      { id: 7, value: "nurses", label: "Enfermeiras", icon: Users },
+      { id: 8, value: "gerentes", label: "Gerentes", icon: Briefcase }
     ]
 
     if (currentUser?.role === 'admin') {
@@ -122,6 +124,9 @@ export function VaccineManagementSystem() {
             </TabsContent>
             <TabsContent value="health-plans" className="mt-0 h-full">
               <HealthPlansTab />
+            </TabsContent>
+            <TabsContent value="convenios" className="mt-0 h-full">
+              <ConveniosTab />
             </TabsContent>
             <TabsContent value="units" className="mt-0 h-full">
               <UnitsTab currentUser={currentUser} />
