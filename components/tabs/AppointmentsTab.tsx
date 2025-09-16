@@ -11,11 +11,15 @@ import { supabase } from '@/lib/supabase'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { CirclePlus, Edit, Trash2, ChevronLeft, ChevronRight, Printer, Eye } from "lucide-react"
+import { CirclePlus, Edit, Trash2, ChevronLeft, ChevronRight, Printer, Eye, MessageSquare, Clock, User, Filter, X, Search } from "lucide-react"
 import { Unit, Patient, UnitSchedule, Vaccine } from '@/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useUserUnitsFilter } from '@/hooks/useUserUnitsFilter'
 
 interface Appointment {
@@ -54,6 +58,38 @@ interface Appointment {
   }
 }
 
+interface SolicitacaoAgendamento {
+  id: number
+  user_id: string
+  vacina_id: number
+  unidade_id: number | null
+  observacoes: string | null
+  status: string
+  prioridade: string
+  data_solicitacao: string
+  data_contato: string | null
+  atendente_id: string | null
+  observacoes_atendente: string | null
+  created_at: string
+  updated_at: string
+  // Dados relacionados
+  user?: {
+    email: string
+    celular: string
+    nome: string
+  }
+  vacina?: {
+    nome: string
+  }
+  unidade?: {
+    nome: string
+  }
+  atendente?: {
+    email: string
+    nome: string
+  }
+}
+
 export function AppointmentsTab() {
   const { getUnitsFilter, shouldFilterByUnits, currentUser } = useUserUnitsFilter()
   const [units, setUnits] = useState<Unit[]>([])
@@ -81,6 +117,20 @@ export function AppointmentsTab() {
   const [hasSchedules, setHasSchedules] = useState<boolean>(false)
   const [appointmentToDelete, setAppointmentToDelete] = useState<number | null>(null)
   const [currentMonth, setCurrentMonth] = useState(new Date())
+  
+  // Estados para solicitações de agendamento
+  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoAgendamento[]>([])
+  const [isLoadingSolicitacoes, setIsLoadingSolicitacoes] = useState(false)
+  const [selectedSolicitacao, setSelectedSolicitacao] = useState<SolicitacaoAgendamento | null>(null)
+  const [isSolicitacaoModalOpen, setIsSolicitacaoModalOpen] = useState(false)
+  
+  // Estados para filtros e paginação das solicitações
+  const [filterStatusSolicitacao, setFilterStatusSolicitacao] = useState('')
+  const [filterPrioridadeSolicitacao, setFilterPrioridadeSolicitacao] = useState('')
+  const [filterUnidadeSolicitacao, setFilterUnidadeSolicitacao] = useState('')
+  const [searchTermSolicitacao, setSearchTermSolicitacao] = useState('')
+  const [currentPageSolicitacao, setCurrentPageSolicitacao] = useState(1)
+  const [itemsPerPageSolicitacao] = useState(50)
 
   // 🔥 Busca unidades disponíveis
   const fetchUnits = async () => {
@@ -472,6 +522,106 @@ export function AppointmentsTab() {
     }
   }
 
+  // 🔥 Busca solicitações de agendamento
+  const fetchSolicitacoes = async () => {
+    try {
+      setIsLoadingSolicitacoes(true)
+      
+      let query = supabase
+        .from('solicitacoes_agendamento')
+        .select(`
+          *,
+          user:user_id (email, celular, nome),
+          vacina:vacina_id (nome),
+          unidade:unidade_id (nome),
+          atendente:atendente_id (email, nome)
+        `)
+        .order('data_solicitacao', { ascending: false })
+
+      // Aplica filtro de unidades se necessário
+      const unitsFilter = getUnitsFilter()
+      if (unitsFilter) {
+        query = query.in('unidade_id', unitsFilter.in)
+      }
+
+      const { data, error } = await query
+
+      if (error) throw error
+
+      setSolicitacoes(data || [])
+    } catch (error) {
+      console.error('Erro ao buscar solicitações:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar solicitações de agendamento"
+      })
+    } finally {
+      setIsLoadingSolicitacoes(false)
+    }
+  }
+
+  // 🔥 Funções para gerenciar solicitações
+  const openSolicitacaoModal = (solicitacao?: SolicitacaoAgendamento) => {
+    setSelectedSolicitacao(solicitacao || null)
+    setIsSolicitacaoModalOpen(true)
+  }
+
+  const handleUpdateSolicitacao = async (solicitacaoId: number, updates: Partial<SolicitacaoAgendamento>) => {
+    try {
+      const { error } = await supabase
+        .from('solicitacoes_agendamento')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', solicitacaoId)
+
+      if (error) throw error
+
+      await fetchSolicitacoes()
+      
+      toast({
+        title: "Sucesso!",
+        description: "Solicitação atualizada com sucesso!"
+      })
+    } catch (error) {
+      console.error('Erro ao atualizar solicitação:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar solicitação"
+      })
+    }
+  }
+
+  const handleContactSolicitacao = async (solicitacaoId: number) => {
+    try {
+      const { error } = await supabase
+        .from('solicitacoes_agendamento')
+        .update({
+          status: 'em_contato',
+          data_contato: new Date().toISOString(),
+          atendente_id: currentUser?.id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', solicitacaoId)
+
+      if (error) throw error
+
+      await fetchSolicitacoes()
+      
+      toast({
+        title: "Sucesso!",
+        description: "Status atualizado para 'Em Contato'"
+      })
+    } catch (error) {
+      console.error('Erro ao atualizar status:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar status da solicitação"
+      })
+    }
+  }
+
   // Componente do botão de impressão
   const PrintButton = ({ appointment }: { appointment: Appointment }) => {
     return (
@@ -855,6 +1005,7 @@ export function AppointmentsTab() {
   useEffect(() => {
     if (currentUser) {
       fetchAppointments()
+      fetchSolicitacoes()
     }
   }, [currentUser])
 
@@ -885,6 +1036,11 @@ export function AppointmentsTab() {
       setAppointmentsByDay({})
     }
   }, [selectedUnit])
+
+  // Reset página quando mudar de aba
+  useEffect(() => {
+    setCurrentPageSolicitacao(1)
+  }, [activeTab])
 
   const handleScheduleAppointment = async () => {
     try {
@@ -967,6 +1123,45 @@ export function AppointmentsTab() {
 
     return matches
   })
+
+  // 🔥 Filtros e paginação para solicitações
+  const filteredSolicitacoes = solicitacoes.filter(solicitacao => {
+    const matchesSearch = searchTermSolicitacao === '' || 
+      solicitacao.user?.nome?.toLowerCase().includes(searchTermSolicitacao.toLowerCase()) ||
+      solicitacao.user?.email?.toLowerCase().includes(searchTermSolicitacao.toLowerCase()) ||
+      solicitacao.vacina?.nome?.toLowerCase().includes(searchTermSolicitacao.toLowerCase()) ||
+      solicitacao.unidade?.nome?.toLowerCase().includes(searchTermSolicitacao.toLowerCase())
+    
+    const matchesStatus = filterStatusSolicitacao === '' || 
+      solicitacao.status === filterStatusSolicitacao
+    
+    const matchesPrioridade = filterPrioridadeSolicitacao === '' || 
+      solicitacao.prioridade === filterPrioridadeSolicitacao
+    
+    const matchesUnidade = filterUnidadeSolicitacao === '' || 
+      solicitacao.unidade_id?.toString() === filterUnidadeSolicitacao
+    
+    return matchesSearch && matchesStatus && matchesPrioridade && matchesUnidade
+  })
+
+  const totalPagesSolicitacoes = Math.ceil(filteredSolicitacoes.length / itemsPerPageSolicitacao)
+  const startIndexSolicitacoes = (currentPageSolicitacao - 1) * itemsPerPageSolicitacao
+  const endIndexSolicitacoes = startIndexSolicitacoes + itemsPerPageSolicitacao
+  const paginatedSolicitacoes = filteredSolicitacoes.slice(startIndexSolicitacoes, endIndexSolicitacoes)
+
+  // Função para resetar filtros das solicitações
+  const resetFiltersSolicitacoes = () => {
+    setFilterStatusSolicitacao('')
+    setFilterPrioridadeSolicitacao('')
+    setFilterUnidadeSolicitacao('')
+    setSearchTermSolicitacao('')
+    setCurrentPageSolicitacao(1)
+  }
+
+  // Função para mudar página das solicitações
+  const handlePageChangeSolicitacoes = (page: number) => {
+    setCurrentPageSolicitacao(page)
+  }
 
   const handleDeleteAppointment = async (appointmentId: number) => {
     try {
@@ -1057,9 +1252,10 @@ export function AppointmentsTab() {
       </div>
 
       <Tabs defaultValue="list" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+        <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
           <TabsTrigger value="list">Lista</TabsTrigger>
           <TabsTrigger value="calendar">Calendário</TabsTrigger>
+          <TabsTrigger value="solicitacoes">Solicitações</TabsTrigger>
         </TabsList>
 
         <TabsContent value="list">
@@ -1293,6 +1489,263 @@ export function AppointmentsTab() {
                 )
               })}
             </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="solicitacoes">
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Solicitações de Agendamento
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Filtros para Solicitações */}
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Filter className="h-4 w-4" />
+                    <span className="font-medium">Filtros</span>
+                    {(filterStatusSolicitacao || filterPrioridadeSolicitacao || filterUnidadeSolicitacao || searchTermSolicitacao) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={resetFiltersSolicitacoes}
+                        className="ml-auto"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Limpar
+                      </Button>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <Label htmlFor="filter-status-solicitacao">Status</Label>
+                      <select
+                        id="filter-status-solicitacao"
+                        value={filterStatusSolicitacao}
+                        onChange={(e) => {
+                          setFilterStatusSolicitacao(e.target.value)
+                          setCurrentPageSolicitacao(1)
+                        }}
+                        className="w-full p-2 border rounded-md"
+                      >
+                        <option value="">Todos os status</option>
+                        <option value="pendente">Pendente</option>
+                        <option value="em_contato">Em Contato</option>
+                        <option value="resolvido">Resolvido</option>
+                        <option value="cancelado">Cancelado</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="filter-prioridade-solicitacao">Prioridade</Label>
+                      <select
+                        id="filter-prioridade-solicitacao"
+                        value={filterPrioridadeSolicitacao}
+                        onChange={(e) => {
+                          setFilterPrioridadeSolicitacao(e.target.value)
+                          setCurrentPageSolicitacao(1)
+                        }}
+                        className="w-full p-2 border rounded-md"
+                      >
+                        <option value="">Todas as prioridades</option>
+                        <option value="baixa">Baixa</option>
+                        <option value="normal">Normal</option>
+                        <option value="alta">Alta</option>
+                        <option value="urgente">Urgente</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="filter-unidade-solicitacao">Unidade</Label>
+                      <select
+                        id="filter-unidade-solicitacao"
+                        value={filterUnidadeSolicitacao}
+                        onChange={(e) => {
+                          setFilterUnidadeSolicitacao(e.target.value)
+                          setCurrentPageSolicitacao(1)
+                        }}
+                        className="w-full p-2 border rounded-md"
+                      >
+                        <option value="">Todas as unidades</option>
+                        {units.map((unidade) => (
+                          <option key={unidade.id} value={unidade.id}>
+                            {unidade.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="search-solicitacao">Buscar</Label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                        <Input
+                          id="search-solicitacao"
+                          placeholder="Buscar por nome, email, vacina..."
+                          value={searchTermSolicitacao}
+                          onChange={(e) => {
+                            setSearchTermSolicitacao(e.target.value)
+                            setCurrentPageSolicitacao(1)
+                          }}
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 text-sm text-gray-600">
+                    Mostrando {paginatedSolicitacoes.length} de {filteredSolicitacoes.length} solicitações
+                  </div>
+                </div>
+
+                {isLoadingSolicitacoes ? (
+                  <div className="flex justify-center py-8">
+                    <div className="text-gray-500">Carregando solicitações...</div>
+                  </div>
+                ) : (
+                  <>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Vacina</TableHead>
+                          <TableHead>Unidade</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Prioridade</TableHead>
+                          <TableHead>Data Solicitação</TableHead>
+                          <TableHead>Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedSolicitacoes.map((solicitacao) => (
+                          <TableRow key={solicitacao.id}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{solicitacao.user?.nome || 'N/A'}</div>
+                                <div className="text-sm text-gray-500">{solicitacao.user?.email}</div>
+                                <div className="text-sm text-gray-500">{solicitacao.user?.celular}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium">{solicitacao.vacina?.nome || 'N/A'}</TableCell>
+                            <TableCell>{solicitacao.unidade?.nome || 'Não especificada'}</TableCell>
+                            <TableCell>
+                              <Badge 
+                                variant={
+                                  solicitacao.status === 'pendente' ? 'secondary' :
+                                  solicitacao.status === 'em_contato' ? 'default' :
+                                  solicitacao.status === 'resolvido' ? 'outline' : 'destructive'
+                                }
+                              >
+                                {solicitacao.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge 
+                                variant={
+                                  solicitacao.prioridade === 'baixa' ? 'outline' :
+                                  solicitacao.prioridade === 'normal' ? 'secondary' :
+                                  solicitacao.prioridade === 'alta' ? 'default' : 'destructive'
+                                }
+                              >
+                                {solicitacao.prioridade}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm">
+                                {format(new Date(solicitacao.data_solicitacao), 'dd/MM/yyyy HH:mm')}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openSolicitacaoModal(solicitacao)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                {solicitacao.status === 'pendente' && (
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => handleContactSolicitacao(solicitacao.id)}
+                                  >
+                                    <Clock className="h-4 w-4 mr-1" />
+                                    Contatar
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+
+                    {/* Paginação para Solicitações */}
+                    {totalPagesSolicitacoes > 1 && (
+                      <div className="flex items-center justify-between mt-6">
+                        <div className="text-sm text-gray-600">
+                          Página {currentPageSolicitacao} de {totalPagesSolicitacoes}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChangeSolicitacoes(currentPageSolicitacao - 1)}
+                            disabled={currentPageSolicitacao === 1}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            Anterior
+                          </Button>
+                          
+                          <div className="flex gap-1">
+                            {Array.from({ length: Math.min(5, totalPagesSolicitacoes) }, (_, i) => {
+                              let pageNum;
+                              if (totalPagesSolicitacoes <= 5) {
+                                pageNum = i + 1;
+                              } else if (currentPageSolicitacao <= 3) {
+                                pageNum = i + 1;
+                              } else if (currentPageSolicitacao >= totalPagesSolicitacoes - 2) {
+                                pageNum = totalPagesSolicitacoes - 4 + i;
+                              } else {
+                                pageNum = currentPageSolicitacao - 2 + i;
+                              }
+                              
+                              return (
+                                <Button
+                                  key={pageNum}
+                                  variant={currentPageSolicitacao === pageNum ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => handlePageChangeSolicitacoes(pageNum)}
+                                  className="w-8 h-8 p-0"
+                                >
+                                  {pageNum}
+                                </Button>
+                              );
+                            })}
+                          </div>
+                          
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChangeSolicitacoes(currentPageSolicitacao + 1)}
+                            disabled={currentPageSolicitacao === totalPagesSolicitacoes}
+                          >
+                            Próxima
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
       </Tabs>
@@ -1700,6 +2153,154 @@ export function AppointmentsTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Modal de Solicitação de Agendamento */}
+      <Dialog open={isSolicitacaoModalOpen} onOpenChange={setIsSolicitacaoModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              {selectedSolicitacao ? 'Editar Solicitação' : 'Nova Solicitação'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedSolicitacao && (
+            <div className="space-y-6">
+              {/* Informações do Cliente */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-medium mb-3">Informações do Cliente</h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="font-medium">Nome:</span> {selectedSolicitacao.user?.nome || 'N/A'}
+                  </div>
+                  <div>
+                    <span className="font-medium">Email:</span> {selectedSolicitacao.user?.email || 'N/A'}
+                  </div>
+                  <div>
+                    <span className="font-medium">Celular:</span> {selectedSolicitacao.user?.celular || 'N/A'}
+                  </div>
+                  <div>
+                    <span className="font-medium">Vacina:</span> {selectedSolicitacao.vacina?.nome || 'N/A'}
+                  </div>
+                  <div>
+                    <span className="font-medium">Unidade:</span> {selectedSolicitacao.unidade?.nome || 'Não especificada'}
+                  </div>
+                  <div>
+                    <span className="font-medium">Data Solicitação:</span> {format(new Date(selectedSolicitacao.data_solicitacao), 'dd/MM/yyyy HH:mm')}
+                  </div>
+                </div>
+                {selectedSolicitacao.observacoes && (
+                  <div className="mt-3">
+                    <span className="font-medium">Observações do Cliente:</span>
+                    <p className="text-sm text-gray-600 mt-1">{selectedSolicitacao.observacoes}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Formulário de Edição */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="status-solicitacao">Status</Label>
+                    <select
+                      id="status-solicitacao"
+                      value={selectedSolicitacao.status}
+                      onChange={(e) => setSelectedSolicitacao({
+                        ...selectedSolicitacao,
+                        status: e.target.value
+                      })}
+                      className="w-full p-2 border rounded-md"
+                    >
+                      <option value="pendente">Pendente</option>
+                      <option value="em_contato">Em Contato</option>
+                      <option value="resolvido">Resolvido</option>
+                      <option value="cancelado">Cancelado</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="prioridade-solicitacao">Prioridade</Label>
+                    <select
+                      id="prioridade-solicitacao"
+                      value={selectedSolicitacao.prioridade}
+                      onChange={(e) => setSelectedSolicitacao({
+                        ...selectedSolicitacao,
+                        prioridade: e.target.value
+                      })}
+                      className="w-full p-2 border rounded-md"
+                    >
+                      <option value="baixa">Baixa</option>
+                      <option value="normal">Normal</option>
+                      <option value="alta">Alta</option>
+                      <option value="urgente">Urgente</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="unidade-solicitacao">Unidade</Label>
+                  <select
+                    id="unidade-solicitacao"
+                    value={selectedSolicitacao.unidade_id || ''}
+                    onChange={(e) => setSelectedSolicitacao({
+                      ...selectedSolicitacao,
+                      unidade_id: e.target.value ? parseInt(e.target.value) : null
+                    })}
+                    className="w-full p-2 border rounded-md"
+                  >
+                    <option value="">Selecione uma unidade</option>
+                    {units.map((unidade) => (
+                      <option key={unidade.id} value={unidade.id}>
+                        {unidade.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <Label htmlFor="observacoes-atendente">Observações do Atendente</Label>
+                  <Textarea
+                    id="observacoes-atendente"
+                    value={selectedSolicitacao.observacoes_atendente || ''}
+                    onChange={(e) => setSelectedSolicitacao({
+                      ...selectedSolicitacao,
+                      observacoes_atendente: e.target.value
+                    })}
+                    placeholder="Digite suas observações sobre o atendimento..."
+                    rows={4}
+                  />
+                </div>
+              </div>
+
+              {/* Botões de Ação */}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsSolicitacaoModalOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (selectedSolicitacao) {
+                      handleUpdateSolicitacao(selectedSolicitacao.id, {
+                        status: selectedSolicitacao.status,
+                        prioridade: selectedSolicitacao.prioridade,
+                        unidade_id: selectedSolicitacao.unidade_id,
+                        observacoes_atendente: selectedSolicitacao.observacoes_atendente,
+                        atendente_id: currentUser?.id
+                      })
+                      setIsSolicitacaoModalOpen(false)
+                    }
+                  }}
+                >
+                  Salvar Alterações
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
