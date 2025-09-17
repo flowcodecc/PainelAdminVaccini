@@ -527,36 +527,53 @@ export function AppointmentsTab() {
     try {
       setIsLoadingSolicitacoes(true)
       
-      let query = supabase
+      // Primeiro, buscar as solicitações básicas
+      const { data: solicitacoesData, error } = await supabase
         .from('solicitacoes_agendamento')
-        .select(`
-          *,
-          vacina:ref_vacinas!vacina_id(nome),
-          unidade:unidade!unidade_id(nome)
-        `)
+        .select('*')
         .order('data_solicitacao', { ascending: false })
 
-      // Aplica filtro de unidades se necessário
-      const unitsFilter = getUnitsFilter()
-      if (unitsFilter) {
-        query = query.in('unidade_id', unitsFilter.in)
+      if (error) {
+        console.error('Erro na query principal:', error)
+        throw error
       }
 
-      const { data: solicitacoesData, error } = await query
+      console.log('Solicitações encontradas:', solicitacoesData?.length || 0)
 
-      if (error) throw error
+      if (!solicitacoesData || solicitacoesData.length === 0) {
+        setSolicitacoes([])
+        return
+      }
 
-      // Buscar dados dos usuários separadamente
-      const solicitacoesComUsuarios = await Promise.all(
-        (solicitacoesData || []).map(async (solicitacao) => {
-          // Buscar dados do usuário na tabela user
+      // Buscar dados relacionados separadamente
+      const solicitacoesCompletas = await Promise.all(
+        solicitacoesData.map(async (solicitacao) => {
+          // Buscar dados do usuário
           const { data: userData } = await supabase
             .from('user')
             .select('nome, email, celular')
             .eq('id', solicitacao.user_id)
             .single()
 
-          // Buscar dados do atendente se existir
+          // Buscar dados da vacina
+          const { data: vacinaData } = await supabase
+            .from('ref_vacinas')
+            .select('nome')
+            .eq('ref_vacinasID', solicitacao.vacina_id)
+            .single()
+
+          // Buscar dados da unidade (se especificada)
+          let unidadeData = null
+          if (solicitacao.unidade_id) {
+            const { data: unidade } = await supabase
+              .from('unidade')
+              .select('nome')
+              .eq('id', solicitacao.unidade_id)
+              .single()
+            unidadeData = unidade
+          }
+
+          // Buscar dados do atendente (se existir)
           let atendenteData = null
           if (solicitacao.atendente_id) {
             const { data: atendente } = await supabase
@@ -570,12 +587,26 @@ export function AppointmentsTab() {
           return {
             ...solicitacao,
             user: userData,
+            vacina: vacinaData,
+            unidade: unidadeData,
             atendente: atendenteData
           }
         })
       )
 
-      setSolicitacoes(solicitacoesComUsuarios)
+      // Aplica filtro de unidades se necessário (após buscar os dados)
+      const unitsFilter = getUnitsFilter()
+      let solicitacoesFiltradas = solicitacoesCompletas
+      
+      if (unitsFilter && unitsFilter.in.length > 0) {
+        solicitacoesFiltradas = solicitacoesCompletas.filter(s => 
+          !s.unidade_id || unitsFilter.in.includes(s.unidade_id)
+        )
+      }
+
+      console.log('Solicitações após filtro:', solicitacoesFiltradas.length)
+      setSolicitacoes(solicitacoesFiltradas)
+
     } catch (error) {
       console.error('Erro ao buscar solicitações:', error)
       toast({
