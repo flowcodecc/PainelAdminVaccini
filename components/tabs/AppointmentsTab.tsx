@@ -531,10 +531,8 @@ export function AppointmentsTab() {
         .from('solicitacoes_agendamento')
         .select(`
           *,
-          user:user_id (email, celular, nome),
-          vacina:vacina_id (nome),
-          unidade:unidade_id (nome),
-          atendente:atendente_id (email, nome)
+          vacina:ref_vacinas!vacina_id(nome),
+          unidade:unidade!unidade_id(nome)
         `)
         .order('data_solicitacao', { ascending: false })
 
@@ -544,11 +542,40 @@ export function AppointmentsTab() {
         query = query.in('unidade_id', unitsFilter.in)
       }
 
-      const { data, error } = await query
+      const { data: solicitacoesData, error } = await query
 
       if (error) throw error
 
-      setSolicitacoes(data || [])
+      // Buscar dados dos usuários separadamente
+      const solicitacoesComUsuarios = await Promise.all(
+        (solicitacoesData || []).map(async (solicitacao) => {
+          // Buscar dados do usuário na tabela user
+          const { data: userData } = await supabase
+            .from('user')
+            .select('nome, email, celular')
+            .eq('id', solicitacao.user_id)
+            .single()
+
+          // Buscar dados do atendente se existir
+          let atendenteData = null
+          if (solicitacao.atendente_id) {
+            const { data: atendente } = await supabase
+              .from('user')
+              .select('nome, email')
+              .eq('id', solicitacao.atendente_id)
+              .single()
+            atendenteData = atendente
+          }
+
+          return {
+            ...solicitacao,
+            user: userData,
+            atendente: atendenteData
+          }
+        })
+      )
+
+      setSolicitacoes(solicitacoesComUsuarios)
     } catch (error) {
       console.error('Erro ao buscar solicitações:', error)
       toast({
