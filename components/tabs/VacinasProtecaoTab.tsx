@@ -6,6 +6,7 @@ import { ProtecaoVacinasTab } from "./ProtecaoVacinasTab"
 import { VaccineListsTab } from "./VaccineListsTab"
 import { User } from "@/types"
 import { PlanoVacinacaoTab } from "./PlanoVacinacaoTab"
+import { VacinaPrecosConvenioTab } from "./VacinaPrecosConvenioTab"
 
 interface VacinasProtecaoTabProps {
   currentUser: User
@@ -22,6 +23,7 @@ export function VacinasProtecaoTab({ currentUser }: VacinasProtecaoTabProps) {
           <TabsTrigger value="plano">Plano de Vacinação</TabsTrigger>
           <TabsTrigger value="protecoes">Proteções do Mês</TabsTrigger>
           <TabsTrigger value="listas">Listas de Vacinas</TabsTrigger>
+          <TabsTrigger value="precos-convenio">Preços no Convênio</TabsTrigger>
         </TabsList>
         
         <TabsContent value="vacinas">
@@ -38,6 +40,10 @@ export function VacinasProtecaoTab({ currentUser }: VacinasProtecaoTabProps) {
         
         <TabsContent value="listas">
           <VaccineListsTab currentUser={currentUser} />
+        </TabsContent>
+        
+        <TabsContent value="precos-convenio">
+          <VacinaPrecosConvenioTab />
         </TabsContent>
       </Tabs>
     </div>
