@@ -450,7 +450,7 @@ export function AppointmentsTab() {
         query = query.in('unidade_id', unitsFilter.in)
       }
 
-      const { data, error } = await query.order('horario', { ascending: true })
+      const { data, error } = await query.order('horario', { ascending: false })
 
       if (error) throw error
 
