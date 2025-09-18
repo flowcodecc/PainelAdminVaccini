@@ -130,6 +130,7 @@ export function AppointmentsTab() {
   const [isEditAppointmentModalOpen, setIsEditAppointmentModalOpen] = useState(false)
   const [editObservacao, setEditObservacao] = useState('')
   const [editStatus, setEditStatus] = useState('')
+  const [observacaoAgendamento, setObservacaoAgendamento] = useState('')
   
   // Estados para filtros e paginação das solicitações
   const [filterStatusSolicitacao, setFilterStatusSolicitacao] = useState('')
@@ -1135,7 +1136,8 @@ export function AppointmentsTab() {
           dia: selectedDate.toISOString().split('T')[0],
           status_id: 1,
           valor_total: totalValue,
-          vacinas_id: selectedVaccines.map(v => v.vaccineId)
+          vacinas_id: selectedVaccines.map(v => v.vaccineId),
+          observacao: observacaoAgendamento || null
         })
         .select()
         .single()
@@ -1156,6 +1158,7 @@ export function AppointmentsTab() {
       setSelectedPaymentMethod(0)
       setSelectedVaccines([])
       setAvailableTimeSlots([])
+      setObservacaoAgendamento('')
       setActiveTab('list')
     } catch (error) {
       console.error('Erro ao realizar agendamento:', error)
@@ -1255,6 +1258,32 @@ export function AppointmentsTab() {
   }
 
   const handleEditAppointment = (appointment: Appointment) => {
+    // Preenche os estados com os dados do agendamento
+    setSelectedPatient(appointment.patient_id)
+    setSelectedUnit(appointment.unit_id)
+    setSelectedDate(appointment.scheduled_date)
+    setSelectedTimeSlot(parseInt(appointment.time_slot))
+
+    // Busca o ID da forma de pagamento baseado no nome
+    const paymentMethod = paymentMethods.find(p => p.nome === appointment.forma_pagamento)
+    if (paymentMethod) {
+      setSelectedPaymentMethod(paymentMethod.id)
+    }
+
+    // Define as vacinas selecionadas
+    setSelectedVaccines(appointment.vaccines.map(v => ({
+      vaccineId: v.ref_vacinasID,
+      dose: 1 // Define dose padrão como 1
+    })))
+
+    // Define a observação
+    setObservacaoAgendamento(appointment.observacao || '')
+
+    // Abre a aba de novo agendamento
+    setActiveTab("new")
+  }
+
+  const handleEditAppointmentDetails = (appointment: Appointment) => {
     setSelectedAppointmentForEdit(appointment)
     setEditObservacao(appointment.observacao || '')
     setEditStatus(appointment.status)
@@ -1487,24 +1516,33 @@ export function AppointmentsTab() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => handleEditAppointment(appointment)}
+                            title="Editar Agendamento Completo"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditAppointmentDetails(appointment)}
+                            title="Editar Status e Observação"
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => setAppointmentToDelete(appointment.id)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                           <PrintButton appointment={appointment} />
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => setSelectedAppointmentDetails(appointment)}
                           >
                             <Eye className="h-4 w-4" />
@@ -2087,14 +2125,27 @@ export function AppointmentsTab() {
                       </div>
                     </div>
                   )}
+
+                  {selectedPaymentMethod > 0 && (
+                    <div>
+                      <Label htmlFor="observacao-agendamento">Observação</Label>
+                      <Textarea
+                        id="observacao-agendamento"
+                        value={observacaoAgendamento}
+                        onChange={(e) => setObservacaoAgendamento(e.target.value)}
+                        placeholder="Digite observações sobre o agendamento (opcional)..."
+                        rows={3}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <Button 
-                onClick={handleScheduleAppointment} 
+              <Button
+                onClick={handleScheduleAppointment}
                 className="w-full"
                 disabled={!selectedUnit || !selectedDate || !selectedTimeSlot || !selectedPatient || !selectedPaymentMethod}
-              > 
+              >
                 <CirclePlus className="w-4 h-4 mr-2" /> Confirmar Agendamento
               </Button>
             </div>
