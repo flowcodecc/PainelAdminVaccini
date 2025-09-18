@@ -1311,10 +1311,33 @@ export function AppointmentsTab() {
   const handleEditAppointment = async (appointment: Appointment) => {
     console.log('Editando agendamento:', appointment)
 
+    // Verifica se pacientes estão carregados
+    if (patients.length === 0) {
+      console.log('Pacientes não carregados, carregando...')
+      await fetchPatients()
+    }
+
+    // Verifica se unidades estão carregadas
+    if (units.length === 0) {
+      console.log('Unidades não carregadas, carregando...')
+      await fetchUnits()
+    }
+
+    // Verifica se formas de pagamento estão carregadas
+    if (paymentMethods.length === 0) {
+      console.log('Formas de pagamento não carregadas, carregando...')
+      await fetchPaymentMethods()
+    }
+
+    // Verifica se vacinas estão carregadas
+    if (vaccines.length === 0) {
+      console.log('Vacinas não carregadas, carregando...')
+      await fetchVaccines()
+    }
+
     // Preenche os estados com os dados do agendamento
-    setSelectedPatient(appointment.patient_id)
-    setSelectedUnit(appointment.unit_id)
-    setSelectedDate(appointment.scheduled_date)
+    console.log('Selecionando paciente ID:', appointment.patient_id)
+    console.log('Pacientes disponíveis:', patients.map(p => ({id: p.id, name: p.name})))
 
     // Para edição, vamos criar um slot temporário com o horário do agendamento
     const currentTimeSlot = {
@@ -1325,20 +1348,12 @@ export function AppointmentsTab() {
       dia_da_semana: ''
     }
 
-    // Define o slot atual e busca os outros horários disponíveis
+    // Define o slot atual
     setAvailableTimeSlots([currentTimeSlot])
     setSelectedTimeSlot(999)
 
-    // Busca horários disponíveis para adicionar à lista (opcional)
-    if (appointment.unit_id && appointment.scheduled_date) {
-      fetchAvailableTimeSlots(appointment.unit_id, appointment.scheduled_date)
-    }
-
-    // Busca o ID da forma de pagamento baseado no nome
-    const paymentMethod = paymentMethods.find(p => p.nome === appointment.forma_pagamento)
-    if (paymentMethod) {
-      setSelectedPaymentMethod(paymentMethod.id)
-    }
+    // Como estamos editando um agendamento existente, sabemos que a unidade tem horários
+    setHasSchedules(true)
 
     // Define as vacinas selecionadas com dados completos
     console.log('Vacinas do agendamento:', appointment.vaccines)
@@ -1350,6 +1365,26 @@ export function AppointmentsTab() {
 
     // Define a observação
     setObservacaoAgendamento(appointment.observacao || '')
+
+    // Aguarda um pouco para garantir que os dados estejam atualizados antes de definir os valores
+    setTimeout(() => {
+      setSelectedPatient(appointment.patient_id)
+      setSelectedUnit(appointment.unit_id)
+      setSelectedDate(appointment.scheduled_date)
+
+      // Busca o ID da forma de pagamento baseado no nome
+      const paymentMethod = paymentMethods.find(p => p.nome === appointment.forma_pagamento)
+      if (paymentMethod) {
+        setSelectedPaymentMethod(paymentMethod.id)
+      }
+
+      console.log('Estados definidos - Patient:', appointment.patient_id, 'Unit:', appointment.unit_id, 'PaymentMethod:', paymentMethod?.id)
+
+      // Busca horários disponíveis para adicionar à lista (opcional)
+      if (appointment.unit_id && appointment.scheduled_date) {
+        fetchAvailableTimeSlots(appointment.unit_id, appointment.scheduled_date)
+      }
+    }, 200)
 
     // Abre a aba de novo agendamento
     setActiveTab("new")
@@ -2298,14 +2333,6 @@ export function AppointmentsTab() {
                     })}
                   </div>
                   {console.log('Debug Resumo - selectedVaccines:', selectedVaccines, 'totalValue:', totalValue)}
-                  {selectedVaccines.length > 0 && (
-                    <div className="mt-2 pt-2 border-t flex justify-between">
-                      <span className="font-semibold">Total:</span>
-                      <span className="font-semibold text-green-600">
-                        R$ {totalValue.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
