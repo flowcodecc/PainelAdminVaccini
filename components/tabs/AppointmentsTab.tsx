@@ -131,6 +131,7 @@ export function AppointmentsTab() {
   const [editObservacao, setEditObservacao] = useState('')
   const [editStatus, setEditStatus] = useState('')
   const [observacaoAgendamento, setObservacaoAgendamento] = useState('')
+  const [statusOptions, setStatusOptions] = useState<{ id: number, nome: string }[]>([])
   
   // Estados para filtros e paginação das solicitações
   const [filterStatusSolicitacao, setFilterStatusSolicitacao] = useState('')
@@ -439,13 +440,56 @@ export function AppointmentsTab() {
     setVaccines(data || [])
   }
 
+  const fetchStatusOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ref_status_agendamento')
+        .select('ref_status_agendamento_id, nome')
+        .order('ref_status_agendamento_id')
+
+      if (error) {
+        console.error('Erro ao buscar status:', error)
+        return
+      }
+
+      const formattedStatus = data?.map(status => ({
+        id: status['ref_status_agendamento_id'],
+        nome: status.nome
+      })) || []
+
+      setStatusOptions(formattedStatus)
+    } catch (error) {
+      console.error('Erro ao carregar status:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar status de agendamento"
+      })
+    }
+  }
+
   // Busca agendamentos
   const fetchAppointments = async () => {
     try {
       let query = supabase
-        .from('vw_agendamentos_com_usuarios')
+        .from('agendamento')
         .select(`
           *,
+          user:user_id (
+            id,
+            nome,
+            sobrenome,
+            email,
+            celular,
+            logradouro,
+            numero,
+            bairro,
+            cidade,
+            estado,
+            cep,
+            nascimento,
+            sexo,
+            nome_plano_saude
+          ),
           unidade:unidade_id (nome),
           status:status_id (nome),
           forma_pagamento:forma_pagamento_id (nome)
@@ -470,9 +514,9 @@ export function AppointmentsTab() {
             .in('ref_vacinasID', appointment.vacinas_id || [])
 
           return {
-            id: appointment.agendamento_id,
+            id: appointment.id,
             patient_id: appointment.user_id,
-            patient_name: `${appointment.nome} ${appointment.sobrenome || ''}`.trim(),
+            patient_name: `${appointment.user?.nome || ''} ${appointment.user?.sobrenome || ''}`.trim(),
             scheduled_date: new Date(appointment.dia),
             time_slot: appointment.horario,
             status: appointment.status?.nome || 'Pendente',
@@ -488,26 +532,26 @@ export function AppointmentsTab() {
             observacao: appointment.observacao,
             // Novos campos do paciente
             patient_details: {
-              email: appointment.email,
-              celular: appointment.celular,
-              endereco: `${appointment.logradouro}, ${appointment.numero}`,
-              bairro: appointment.bairro,
-              cidade: appointment.cidade,
-              estado: appointment.estado,
-              cep: appointment.cep,
-              nascimento: appointment.nascimento,
-              sexo: appointment.sexo,
-              plano_saude: appointment.nome_plano_saude
+              email: appointment.user?.email,
+              celular: appointment.user?.celular,
+              endereco: `${appointment.user?.logradouro}, ${appointment.user?.numero}`,
+              bairro: appointment.user?.bairro,
+              cidade: appointment.user?.cidade,
+              estado: appointment.user?.estado,
+              cep: appointment.user?.cep,
+              nascimento: appointment.user?.nascimento,
+              sexo: appointment.user?.sexo,
+              plano_saude: appointment.user?.nome_plano_saude
             },
             user: {
-              logradouro: appointment.logradouro,
-              numero: appointment.numero,
-              bairro: appointment.bairro,
-              cidade: appointment.cidade,
-              estado: appointment.estado,
-              cep: appointment.cep,
-              email: appointment.email,
-              celular: appointment.celular
+              logradouro: appointment.user?.logradouro || '',
+              numero: appointment.user?.numero || '',
+              bairro: appointment.user?.bairro || '',
+              cidade: appointment.user?.cidade || '',
+              estado: appointment.user?.estado || '',
+              cep: appointment.user?.cep || '',
+              email: appointment.user?.email || '',
+              celular: appointment.user?.celular || ''
             }
           }
         }))
@@ -1066,6 +1110,7 @@ export function AppointmentsTab() {
     fetchPatients()
     fetchPaymentMethods()
     fetchVaccines()
+    fetchStatusOptions()
   }, [])
 
   // Reexecuta fetchAppointments quando currentUser mudar
@@ -1284,9 +1329,16 @@ export function AppointmentsTab() {
   }
 
   const handleEditAppointmentDetails = (appointment: Appointment) => {
+    console.log('Abrindo modal de edição para agendamento:', appointment)
+    console.log('Observação do agendamento:', appointment.observacao)
+
     setSelectedAppointmentForEdit(appointment)
     setEditObservacao(appointment.observacao || '')
-    setEditStatus(appointment.status)
+
+    // Busca o ID do status baseado no nome
+    const statusOption = statusOptions.find(s => s.nome === appointment.status)
+    setEditStatus(statusOption ? statusOption.id.toString() : '1')
+
     setIsEditAppointmentModalOpen(true)
   }
 
@@ -1298,7 +1350,7 @@ export function AppointmentsTab() {
         .from('agendamento')
         .update({
           observacao: editObservacao,
-          status_id: editStatus === 'Agendado' ? 1 : editStatus === 'Concluído' ? 2 : 3
+          status_id: parseInt(editStatus)
         })
         .eq('id', selectedAppointmentForEdit.id)
 
@@ -2469,9 +2521,11 @@ export function AppointmentsTab() {
                     <SelectValue placeholder="Selecione o status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Agendado">Agendado</SelectItem>
-                    <SelectItem value="Concluído">Concluído</SelectItem>
-                    <SelectItem value="Cancelado">Cancelado</SelectItem>
+                    {statusOptions.map((status) => (
+                      <SelectItem key={status.id} value={status.id.toString()}>
+                        {status.nome}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
