@@ -363,7 +363,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
           try {
             // Prepara os dados
             const cepBase = cepExcluido.cep_base.padStart(5, '0').slice(0, 5)
-            const faixaExcluida = cepExcluido.faixa_excluida.padStart(3, '0').slice(0, 3)
+            const faixaExcluida = cepExcluido.faixa_excluida.padStart(5, '0').slice(0, 5)
 
             if (cepExcluido.id) {
               // Se tem ID, faz update
@@ -678,7 +678,7 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
                       <Input
                         value={cep.faixa_excluida}
                         onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, '').slice(0, 3)
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 5)
                           const newCeps = [...cepsExcluidos]
                           newCeps[index] = {
                             ...newCeps[index],
@@ -686,8 +686,8 @@ export function UnitDialog({ open, onOpenChange, unit, onSuccess, healthPlans }:
                           }
                           setCepsExcluidos(newCeps)
                         }}
-                        maxLength={3}
-                        placeholder="000"
+                        maxLength={5}
+                        placeholder="00000"
                       />
                     </div>
                   </div>

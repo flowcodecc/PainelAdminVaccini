@@ -34,6 +34,7 @@ interface Appointment {
   vaccines: Vaccine[]
   valor_total: number
   forma_pagamento: string
+  observacao?: string
   user: {
     logradouro: string
     numero: string
@@ -123,6 +124,12 @@ export function AppointmentsTab() {
   const [isLoadingSolicitacoes, setIsLoadingSolicitacoes] = useState(false)
   const [selectedSolicitacao, setSelectedSolicitacao] = useState<SolicitacaoAgendamento | null>(null)
   const [isSolicitacaoModalOpen, setIsSolicitacaoModalOpen] = useState(false)
+
+  // Estados para edição de agendamentos
+  const [selectedAppointmentForEdit, setSelectedAppointmentForEdit] = useState<Appointment | null>(null)
+  const [isEditAppointmentModalOpen, setIsEditAppointmentModalOpen] = useState(false)
+  const [editObservacao, setEditObservacao] = useState('')
+  const [editStatus, setEditStatus] = useState('')
   
   // Estados para filtros e paginação das solicitações
   const [filterStatusSolicitacao, setFilterStatusSolicitacao] = useState('')
@@ -450,7 +457,7 @@ export function AppointmentsTab() {
         query = query.in('unidade_id', unitsFilter.in)
       }
 
-      const { data, error } = await query.order('horario', { ascending: false })
+      const { data, error } = await query.order('dia', { ascending: false }).order('horario', { ascending: false })
 
       if (error) throw error
 
@@ -477,6 +484,7 @@ export function AppointmentsTab() {
             })),
             valor_total: appointment.valor_total,
             forma_pagamento: appointment.forma_pagamento?.nome || '-',
+            observacao: appointment.observacao,
             // Novos campos do paciente
             patient_details: {
               email: appointment.email,
@@ -1247,26 +1255,41 @@ export function AppointmentsTab() {
   }
 
   const handleEditAppointment = (appointment: Appointment) => {
-    // Preenche os estados com os dados do agendamento
-    setSelectedPatient(appointment.patient_id)
-    setSelectedUnit(appointment.unit_id)
-    setSelectedDate(appointment.scheduled_date)
-    setSelectedTimeSlot(parseInt(appointment.time_slot))
-    
-    // Busca o ID da forma de pagamento baseado no nome
-    const paymentMethod = paymentMethods.find(p => p.nome === appointment.forma_pagamento)
-    if (paymentMethod) {
-      setSelectedPaymentMethod(paymentMethod.id)
+    setSelectedAppointmentForEdit(appointment)
+    setEditObservacao(appointment.observacao || '')
+    setEditStatus(appointment.status)
+    setIsEditAppointmentModalOpen(true)
+  }
+
+  const handleSaveAppointmentEdit = async () => {
+    if (!selectedAppointmentForEdit) return
+
+    try {
+      const { error } = await supabase
+        .from('agendamento')
+        .update({
+          observacao: editObservacao,
+          status_id: editStatus === 'Agendado' ? 1 : editStatus === 'Concluído' ? 2 : 3
+        })
+        .eq('id', selectedAppointmentForEdit.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Sucesso",
+        description: "Agendamento atualizado com sucesso"
+      })
+
+      await fetchAppointments()
+      setIsEditAppointmentModalOpen(false)
+      setSelectedAppointmentForEdit(null)
+    } catch (error) {
+      console.error('Erro ao atualizar agendamento:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar agendamento"
+      })
     }
-    
-    // Define as vacinas selecionadas
-    setSelectedVaccines(appointment.vaccines.map(v => ({
-      vaccineId: v.ref_vacinasID,
-      dose: 1 // Define dose padrão como 1
-    })))
-    
-    // Abre a aba de novo agendamento
-    setActiveTab("new")
   }
 
   return (
@@ -2181,6 +2204,11 @@ export function AppointmentsTab() {
               <div>
                 <strong>Celular:</strong> {selectedAppointmentDetails.user.celular || '-'}
               </div>
+              {selectedAppointmentDetails.observacao && (
+                <div>
+                  <strong>Observação:</strong> {selectedAppointmentDetails.observacao}
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
@@ -2352,6 +2380,70 @@ export function AppointmentsTab() {
                     }
                   }}
                 >
+                  Salvar Alterações
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Edição de Agendamento */}
+      <Dialog open={isEditAppointmentModalOpen} onOpenChange={setIsEditAppointmentModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Agendamento</DialogTitle>
+          </DialogHeader>
+          {selectedAppointmentForEdit && (
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="text-sm">
+                  <strong>Paciente:</strong> {selectedAppointmentForEdit.patient_name}
+                </div>
+                <div className="text-sm">
+                  <strong>Data:</strong> {format(selectedAppointmentForEdit.scheduled_date, 'dd/MM/yyyy')} às {selectedAppointmentForEdit.time_slot}
+                </div>
+                <div className="text-sm">
+                  <strong>Unidade:</strong> {selectedAppointmentForEdit.unit_name}
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-status">Status</Label>
+                <Select
+                  value={editStatus}
+                  onValueChange={setEditStatus}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Agendado">Agendado</SelectItem>
+                    <SelectItem value="Concluído">Concluído</SelectItem>
+                    <SelectItem value="Cancelado">Cancelado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-observacao">Observação</Label>
+                <Textarea
+                  id="edit-observacao"
+                  value={editObservacao}
+                  onChange={(e) => setEditObservacao(e.target.value)}
+                  placeholder="Digite observações sobre o agendamento..."
+                  rows={4}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditAppointmentModalOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button onClick={handleSaveAppointmentEdit}>
                   Salvar Alterações
                 </Button>
               </div>
