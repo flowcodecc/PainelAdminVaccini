@@ -2279,7 +2279,6 @@ export function AppointmentsTab() {
                 <div>
                   <span className="text-sm text-gray-500">Unidade</span>
                   <p className="font-medium">{units.find(u => u.id === selectedUnit)?.nome || '-'}</p>
-                  {console.log('Debug Resumo - selectedUnit:', selectedUnit, 'units:', units.length)}
                 </div>
                 <div>
                   <span className="text-sm text-gray-500">Data</span>
@@ -2292,21 +2291,18 @@ export function AppointmentsTab() {
                   <p className="font-medium">
                     {availableTimeSlots.find(s => s.id === selectedTimeSlot)?.horario_inicio || '-'}
                   </p>
-                  {console.log('Debug Resumo - selectedTimeSlot:', selectedTimeSlot, 'availableTimeSlots:', availableTimeSlots)}
                 </div>
                 <div>
                   <span className="text-sm text-gray-500">Paciente</span>
                   <p className="font-medium">
                     {patients.find(p => p.id === selectedPatient)?.name || '-'}
                   </p>
-                  {console.log('Debug Resumo - selectedPatient:', selectedPatient, 'patients:', patients.length)}
                 </div>
                 <div>
                   <span className="text-sm text-gray-500">Forma de Pagamento</span>
                   <p className="font-medium">
                     {paymentMethods.find(m => m.id === selectedPaymentMethod)?.nome || '-'}
                   </p>
-                  {console.log('Debug Resumo - selectedPaymentMethod:', selectedPaymentMethod, 'paymentMethods:', paymentMethods.length)}
                 </div>
                 <div>
                   <span className="text-sm text-gray-500">Vacinas Selecionadas</span>
@@ -2318,7 +2314,6 @@ export function AppointmentsTab() {
                         vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
                       }
 
-                      console.log('Debug Resumo Vacina - vaccineId:', vaccineId, 'vaccine encontrada:', vaccine, 'appointmentVaccines:', appointmentVaccines.length, 'vaccines gerais:', vaccines.length)
 
                       return (
                         <div key={vaccineId} className="flex justify-between">
@@ -2332,7 +2327,6 @@ export function AppointmentsTab() {
                       )
                     })}
                   </div>
-                  {console.log('Debug Resumo - selectedVaccines:', selectedVaccines, 'totalValue:', totalValue)}
                 </div>
               </div>
             </div>
