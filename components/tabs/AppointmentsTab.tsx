@@ -1135,11 +1135,15 @@ export function AppointmentsTab() {
 
   useEffect(() => {
     const total = selectedVaccines.reduce((sum, { vaccineId }) => {
-      const vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
+      // Primeiro tenta encontrar nas vacinas do agendamento, depois nas vacinas gerais
+      let vaccine = appointmentVaccines.find(v => v.ref_vacinasID === vaccineId)
+      if (!vaccine) {
+        vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
+      }
       return sum + (vaccine?.preco || 0)
     }, 0)
     setTotalValue(total)
-  }, [selectedVaccines, vaccines])
+  }, [selectedVaccines, vaccines, appointmentVaccines])
 
   useEffect(() => {
     if (selectedUnit) {
@@ -1304,12 +1308,31 @@ export function AppointmentsTab() {
     }
   }
 
-  const handleEditAppointment = (appointment: Appointment) => {
+  const handleEditAppointment = async (appointment: Appointment) => {
+    console.log('Editando agendamento:', appointment)
+
     // Preenche os estados com os dados do agendamento
     setSelectedPatient(appointment.patient_id)
     setSelectedUnit(appointment.unit_id)
     setSelectedDate(appointment.scheduled_date)
-    setSelectedTimeSlot(parseInt(appointment.time_slot))
+
+    // Para edição, vamos criar um slot temporário com o horário do agendamento
+    const currentTimeSlot = {
+      id: 999, // ID temporário para identificar que é o horário atual
+      horario_inicio: appointment.time_slot,
+      horario_fim: appointment.time_slot,
+      unit_id: appointment.unit_id,
+      dia_da_semana: ''
+    }
+
+    // Define o slot atual e busca os outros horários disponíveis
+    setAvailableTimeSlots([currentTimeSlot])
+    setSelectedTimeSlot(999)
+
+    // Busca horários disponíveis para adicionar à lista (opcional)
+    if (appointment.unit_id && appointment.scheduled_date) {
+      fetchAvailableTimeSlots(appointment.unit_id, appointment.scheduled_date)
+    }
 
     // Busca o ID da forma de pagamento baseado no nome
     const paymentMethod = paymentMethods.find(p => p.nome === appointment.forma_pagamento)
@@ -2221,6 +2244,7 @@ export function AppointmentsTab() {
                 <div>
                   <span className="text-sm text-gray-500">Unidade</span>
                   <p className="font-medium">{units.find(u => u.id === selectedUnit)?.nome || '-'}</p>
+                  {console.log('Debug Resumo - selectedUnit:', selectedUnit, 'units:', units.length)}
                 </div>
                 <div>
                   <span className="text-sm text-gray-500">Data</span>
@@ -2233,18 +2257,21 @@ export function AppointmentsTab() {
                   <p className="font-medium">
                     {availableTimeSlots.find(s => s.id === selectedTimeSlot)?.horario_inicio || '-'}
                   </p>
+                  {console.log('Debug Resumo - selectedTimeSlot:', selectedTimeSlot, 'availableTimeSlots:', availableTimeSlots)}
                 </div>
                 <div>
                   <span className="text-sm text-gray-500">Paciente</span>
                   <p className="font-medium">
                     {patients.find(p => p.id === selectedPatient)?.name || '-'}
                   </p>
+                  {console.log('Debug Resumo - selectedPatient:', selectedPatient, 'patients:', patients.length)}
                 </div>
                 <div>
                   <span className="text-sm text-gray-500">Forma de Pagamento</span>
                   <p className="font-medium">
                     {paymentMethods.find(m => m.id === selectedPaymentMethod)?.nome || '-'}
                   </p>
+                  {console.log('Debug Resumo - selectedPaymentMethod:', selectedPaymentMethod, 'paymentMethods:', paymentMethods.length)}
                 </div>
                 <div>
                   <span className="text-sm text-gray-500">Vacinas Selecionadas</span>
@@ -2255,6 +2282,8 @@ export function AppointmentsTab() {
                       if (!vaccine) {
                         vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
                       }
+
+                      console.log('Debug Resumo Vacina - vaccineId:', vaccineId, 'vaccine encontrada:', vaccine, 'appointmentVaccines:', appointmentVaccines.length, 'vaccines gerais:', vaccines.length)
 
                       return (
                         <div key={vaccineId} className="flex justify-between">
@@ -2268,6 +2297,7 @@ export function AppointmentsTab() {
                       )
                     })}
                   </div>
+                  {console.log('Debug Resumo - selectedVaccines:', selectedVaccines, 'totalValue:', totalValue)}
                   {selectedVaccines.length > 0 && (
                     <div className="mt-2 pt-2 border-t flex justify-between">
                       <span className="font-semibold">Total:</span>
