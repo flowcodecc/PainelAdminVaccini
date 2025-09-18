@@ -132,6 +132,7 @@ export function AppointmentsTab() {
   const [editStatus, setEditStatus] = useState('')
   const [observacaoAgendamento, setObservacaoAgendamento] = useState('')
   const [statusOptions, setStatusOptions] = useState<{ id: number, nome: string }[]>([])
+  const [appointmentVaccines, setAppointmentVaccines] = useState<Vaccine[]>([])
   
   // Estados para filtros e paginação das solicitações
   const [filterStatusSolicitacao, setFilterStatusSolicitacao] = useState('')
@@ -1204,6 +1205,7 @@ export function AppointmentsTab() {
       setSelectedVaccines([])
       setAvailableTimeSlots([])
       setObservacaoAgendamento('')
+      setAppointmentVaccines([])
       setActiveTab('list')
     } catch (error) {
       console.error('Erro ao realizar agendamento:', error)
@@ -1315,7 +1317,9 @@ export function AppointmentsTab() {
       setSelectedPaymentMethod(paymentMethod.id)
     }
 
-    // Define as vacinas selecionadas
+    // Define as vacinas selecionadas com dados completos
+    console.log('Vacinas do agendamento:', appointment.vaccines)
+    setAppointmentVaccines(appointment.vaccines)
     setSelectedVaccines(appointment.vaccines.map(v => ({
       vaccineId: v.ref_vacinasID,
       dose: 1 // Define dose padrão como 1
@@ -2089,12 +2093,17 @@ export function AppointmentsTab() {
                       <Label>Vacinas</Label>
                       <div className="space-y-4">
                         {selectedVaccines.map(({ vaccineId, dose }) => {
-                          const vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
+                          // Primeiro tenta encontrar nas vacinas do agendamento, depois nas vacinas gerais
+                          let vaccine = appointmentVaccines.find(v => v.ref_vacinasID === vaccineId)
+                          if (!vaccine) {
+                            vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
+                          }
+
                           return (
                             <div key={vaccineId} className="flex items-center justify-between p-2 border rounded">
-                              <span>{vaccine?.nome} - {dose}ª Dose</span>
+                              <span>{vaccine?.nome || `Vacina ID: ${vaccineId}`} - {dose}ª Dose</span>
                               <Button
-                                variant="ghost" 
+                                variant="ghost"
                                 size="sm"
                                 onClick={() => setSelectedVaccines(prev => prev.filter(v => v.vaccineId !== vaccineId))}
                               >
@@ -2241,14 +2250,19 @@ export function AppointmentsTab() {
                   <span className="text-sm text-gray-500">Vacinas Selecionadas</span>
                   <div className="space-y-1">
                     {selectedVaccines.map(({ vaccineId, dose }) => {
-                      const vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
+                      // Primeiro tenta encontrar nas vacinas do agendamento, depois nas vacinas gerais
+                      let vaccine = appointmentVaccines.find(v => v.ref_vacinasID === vaccineId)
+                      if (!vaccine) {
+                        vaccine = vaccines.find(v => v.ref_vacinasID === vaccineId)
+                      }
+
                       return (
                         <div key={vaccineId} className="flex justify-between">
                           <p className="font-medium">
-                            {vaccine?.nome} - {dose}ª Dose
+                            {vaccine?.nome || `Vacina ID: ${vaccineId}`} - {dose}ª Dose
                           </p>
                           <p className="text-gray-600">
-                            R$ {vaccine?.preco.toFixed(2)}
+                            R$ {vaccine?.preco?.toFixed(2) || '0.00'}
                           </p>
                         </div>
                       )
